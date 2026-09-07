@@ -1,0 +1,20 @@
+# Go
+*.exe
+*.test
+domhub
+server
+
+# 数据与本地配置
+*.db
+config.yaml
+config.local.yaml
+
+# 前端
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

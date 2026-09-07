@@ -1,0 +1,21 @@
+# DomHub 服务配置示例。复制为 config.yaml 使用；所有项均可用环境变量覆盖（DOMHUB_ 前缀）。
+
+server:
+  port: 8080        # 监听端口
+  mode: debug       # debug | release
+
+db:
+  driver: sqlite    # mysql | sqlite（sqlite 仅用于开发/演示）
+  # sqlite 模式：dsn 为文件路径
+  dsn: domhub.db
+  # mysql 模式示例：
+  # driver: mysql
+  # dsn: "domhub:domhub123@tcp(127.0.0.1:3306)/domhub?charset=utf8mb4&parseTime=True&loc=Local"
+
+jwt:
+  secret: ""        # 必填！生产环境通过 DOMHUB_JWT_SECRET 环境变量注入
+  expire_hours: 24  # token 有效期（小时）
+
+admin:
+  username: admin
+  password: admin123  # 首次启动 seeding 创建，登录后请修改
