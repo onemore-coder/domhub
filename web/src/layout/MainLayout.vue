@@ -16,9 +16,17 @@
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
+        <el-menu-item index="/accounts">
+          <el-icon><Cloudy /></el-icon>
+          <span>云账号</span>
+        </el-menu-item>
         <el-menu-item index="/domains">
           <el-icon><Collection /></el-icon>
           <span>域名台账</span>
+        </el-menu-item>
+        <el-menu-item index="/alerts">
+          <el-icon><Bell /></el-icon>
+          <span>告警中心</span>
         </el-menu-item>
         <el-menu-item index="/dns">
           <el-icon><Connection /></el-icon>

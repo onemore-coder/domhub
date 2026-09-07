@@ -42,6 +42,12 @@ func InitDB(cfg *config.Config) *gorm.DB {
 
 	if err := db.AutoMigrate(
 		&model.User{},
+		&model.CloudAccount{},
+		&model.Domain{},
+		&model.AlertChannel{},
+		&model.AlertRule{},
+		&model.AlertLog{},
+		&model.SyncTask{},
 	); err != nil {
 		panic("数据库迁移失败: " + err.Error())
 	}

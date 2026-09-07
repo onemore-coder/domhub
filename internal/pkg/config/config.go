@@ -21,6 +21,13 @@ type Config struct {
 		Secret      string `mapstructure:"secret"`
 		ExpireHours int    `mapstructure:"expire_hours"`
 	} `mapstructure:"jwt"`
+	Crypto struct {
+		Key string `mapstructure:"key"` // 云凭证加密密钥；默认取 DOMHUB_CRYPTO_KEY，再退回 jwt.secret 派生
+	} `mapstructure:"crypto"`
+	Job struct {
+		CheckCron string `mapstructure:"check_cron"` // 到期检查，cron 表达式（带秒位），空 = 关闭
+		SyncCron  string `mapstructure:"sync_cron"`  // 台账定时同步，空 = 关闭
+	} `mapstructure:"job"`
 	Admin struct {
 		Username string `mapstructure:"username"`
 		Password string `mapstructure:"password"`
@@ -39,6 +46,9 @@ func Load() *Config {
 	v.SetDefault("db.dsn", "domhub.db")
 	v.SetDefault("jwt.secret", "")
 	v.SetDefault("jwt.expire_hours", 24)
+	v.SetDefault("crypto.key", "")
+	v.SetDefault("job.check_cron", "0 0 9 * * *") // 每天 09:00
+	v.SetDefault("job.sync_cron", "")             // 默认关闭
 	v.SetDefault("admin.username", "admin")
 	v.SetDefault("admin.password", "admin123")
 
@@ -70,6 +80,14 @@ func Load() *Config {
 			// 开发兜底；生产环境必须显式配置
 			cfg.JWT.Secret = "domhub-dev-secret-do-not-use-in-prod"
 		}
+	}
+
+	// 云凭证加密密钥：crypto.key → DOMHUB_CRYPTO_KEY → jwt.secret
+	if cfg.Crypto.Key == "" {
+		cfg.Crypto.Key = os.Getenv("DOMHUB_CRYPTO_KEY")
+	}
+	if cfg.Crypto.Key == "" {
+		cfg.Crypto.Key = cfg.JWT.Secret
 	}
 
 	return &cfg

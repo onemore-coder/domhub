@@ -13,6 +13,7 @@ import (
 	"github.com/domhub-io/domhub/internal/api/handler"
 	"github.com/domhub-io/domhub/internal/api/middleware"
 	"github.com/domhub-io/domhub/internal/pkg/config"
+	"github.com/domhub-io/domhub/internal/pkg/cryptox"
 	"github.com/domhub-io/domhub/internal/pkg/logger"
 	"github.com/domhub-io/domhub/internal/repo"
 	"github.com/domhub-io/domhub/internal/service"
@@ -31,7 +32,25 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	authSvc := service.NewAuthService(
 		repo.NewUserRepo(db), cfg.JWT.Secret, cfg.JWT.ExpireHours)
 	authH := handler.NewAuthHandler(authSvc)
-	dashH := handler.NewDashboardHandler()
+
+	// M1：云账号 / 域名台账 / 告警
+	cipher, err := cryptox.New(cfg.Crypto.Key)
+	if err != nil {
+		panic("初始化凭证加密器失败: " + err.Error())
+	}
+	accountRepo := repo.NewCloudAccountRepo(db)
+	domainRepo := repo.NewDomainRepo(db)
+	alertRepo := repo.NewAlertRepo(db)
+	taskRepo := repo.NewSyncTaskRepo(db)
+
+	dashH := handler.NewDashboardHandler(accountRepo, domainRepo)
+
+	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
+	alertSvc := service.NewAlertService(alertRepo, domainRepo)
+
+	accountH := handler.NewCloudAccountHandler(accountSvc)
+	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
+	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
 
 	auth := api.Group("/auth")
 	{
@@ -44,6 +63,29 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	{
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
+
+		protected.GET("/accounts", accountH.List)
+		protected.POST("/accounts", accountH.Create)
+		protected.PUT("/accounts/:id", accountH.Update)
+		protected.DELETE("/accounts/:id", accountH.Delete)
+		protected.POST("/accounts/:id/check", accountH.Check)
+		protected.POST("/accounts/:id/sync", accountH.Sync)
+
+		protected.GET("/domains", domainH.List)
+		protected.POST("/domains/sync", domainH.SyncAll)
+
+		protected.GET("/channels", alertH.ListChannels)
+		protected.POST("/channels", alertH.CreateChannel)
+		protected.PUT("/channels/:id", alertH.UpdateChannel)
+		protected.DELETE("/channels/:id", alertH.DeleteChannel)
+
+		protected.GET("/alert-rules", alertH.ListRules)
+		protected.POST("/alert-rules", alertH.CreateRule)
+		protected.PUT("/alert-rules/:id", alertH.UpdateRule)
+		protected.DELETE("/alert-rules/:id", alertH.DeleteRule)
+
+		protected.POST("/alerts/check", alertH.RunCheck)
+		protected.GET("/alerts/logs", alertH.ListLogs)
 	}
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）

@@ -19,18 +19,24 @@ const routes = [
         component: () => import('../views/Dashboard.vue'),
         meta: { title: '仪表盘' },
       },
-      // M1+ 占位：域名台账 / DNS 管理 / 审计 / 设置
+      // M1：云账号 / 域名台账 / 告警中心
+      {
+        path: 'accounts',
+        name: 'Accounts',
+        component: () => import('../views/Accounts.vue'),
+        meta: { title: '云账号' },
+      },
       {
         path: 'domains',
         name: 'Domains',
-        component: () => import('../views/Placeholder.vue'),
+        component: () => import('../views/Domains.vue'),
         meta: { title: '域名台账' },
       },
       {
-        path: 'dns',
-        name: 'DNS',
-        component: () => import('../views/Placeholder.vue'),
-        meta: { title: 'DNS 管理' },
+        path: 'alerts',
+        name: 'Alerts',
+        component: () => import('../views/Alerts.vue'),
+        meta: { title: '告警中心' },
       },
       {
         path: 'audit',
