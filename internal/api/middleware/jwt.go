@@ -16,8 +16,14 @@ const (
 	CtxRole     = "role"
 )
 
+// RoleLookup 按用户 ID 查询角色与状态（用于兼容无 role 声明的旧 token）。
+// 返回 (role, active)；active=false 表示账号被禁用。
+type RoleLookup func(userID uint) (role string, active bool)
+
 // JWT 校验 Bearer Token，将用户信息注入上下文。
-func JWT(secret string) gin.HandlerFunc {
+// lookup 非 nil 时：旧 token（无 role 声明）会回源数据库补齐角色，
+// 同时校验账号是否被禁用，禁用用户的 token 立即失效。
+func JWT(secret string, lookup RoleLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
@@ -30,9 +36,21 @@ func JWT(secret string) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录已失效，请重新登录"})
 			return
 		}
+
+		role := claims.Role
+		if role == "" && lookup != nil {
+			// 兼容 M3 之前签发的旧 token：回源补齐角色
+			dbRole, active := lookup(claims.UserID)
+			if !active {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "账号已被禁用，请联系管理员"})
+				return
+			}
+			role = dbRole
+		}
+
 		c.Set(CtxUserID, claims.UserID)
 		c.Set(CtxUsername, claims.Username)
-		c.Set(CtxRole, claims.Role)
+		c.Set(CtxRole, role)
 		c.Next()
 	}
 }

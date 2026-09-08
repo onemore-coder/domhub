@@ -70,7 +70,15 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	}
 
 	protected := api.Group("")
-	protected.Use(middleware.JWT(cfg.JWT.Secret))
+	// 旧 token 无 role 声明时回源数据库补齐，并校验账号启用状态
+	userLookup := func(uid uint) (string, bool) {
+		u, err := repo.NewUserRepo(db).FindByID(uid)
+		if err != nil {
+			return "", false
+		}
+		return u.Role, u.Status == 1
+	}
+	protected.Use(middleware.JWT(cfg.JWT.Secret, userLookup))
 	{
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
