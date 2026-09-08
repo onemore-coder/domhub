@@ -45,6 +45,13 @@ const routes = [
         meta: { title: 'DNS 管理' },
       },
       {
+        // Zone 解析记录详情页（从 DNS 列表点「解析」进入）
+        path: 'dns/records',
+        name: 'DNSRecords',
+        component: () => import('../views/DnsRecords.vue'),
+        meta: { title: '解析记录', menu: 'dns' },
+      },
+      {
         path: 'alerts',
         name: 'Alerts',
         component: () => import('../views/Alerts.vue'),

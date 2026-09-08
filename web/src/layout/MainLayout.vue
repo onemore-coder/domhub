@@ -6,7 +6,7 @@
         <span class="logo-sub">多云域名管理</span>
       </div>
       <el-menu
-        :default-active="$route.path"
+        :default-active="($route.meta.menu || $route.path)"
         router
         background-color="#1f2d3d"
         text-color="#bfcbd9"
