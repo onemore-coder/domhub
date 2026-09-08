@@ -21,6 +21,10 @@ export const useUserStore = defineStore('user', {
       const res = await getMe()
       this.user = res.data
     },
+    setToken(token) {
+      this.token = token
+      localStorage.setItem('domhub_token', token)
+    },
     clear() {
       this.token = ''
       this.user = null

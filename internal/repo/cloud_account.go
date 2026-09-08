@@ -147,6 +147,21 @@ func (r *DomainRepo) Count() (int64, error) {
 	return n, err
 }
 
+// UpdateMeta 更新本地维护字段（标签/备注），不影响云同步。
+func (r *DomainRepo) UpdateMeta(id uint, tags, remark *string) error {
+	updates := map[string]any{}
+	if tags != nil {
+		updates["tags"] = *tags
+	}
+	if remark != nil {
+		updates["remark"] = *remark
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Domain{}).Where("id = ?", id).Updates(updates).Error
+}
+
 // CountByKind 按类型统计（domain | zone）。
 func (r *DomainRepo) CountByKind(kind string) (int64, error) {
 	var n int64

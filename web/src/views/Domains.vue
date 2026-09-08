@@ -57,9 +57,15 @@
             <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="标签" min-width="120">
+        <el-table-column label="标签" min-width="140">
           <template #default="{ row }">
             <el-tag v-for="t in splitTags(row.tags)" :key="t" size="small" class="tag-item">{{ t }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openMeta(row)">编辑</el-button>
           </template>
         </el-table-column>
         <el-table-column label="最近同步" width="170">
@@ -76,13 +82,29 @@
         @current-change="load"
       />
     </el-card>
+
+    <!-- 标签/备注编辑 -->
+    <el-dialog v-model="metaDialog" title="编辑标签与备注" width="440px">
+      <el-form label-width="60px">
+        <el-form-item label="标签">
+          <el-input v-model="metaForm.tags" placeholder="逗号分隔，如：生产,核心" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="metaForm.remark" type="textarea" :rows="2" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="metaDialog = false">取消</el-button>
+        <el-button type="primary" :loading="metaSaving" @click="saveMeta">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listDomains, syncAllDomains } from '../api/domhub'
+import { listDomains, syncAllDomains, updateDomainMeta } from '../api/domhub'
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -131,6 +153,33 @@ async function doSyncAll() {
     ElMessage.success('同步任务已触发，稍后刷新查看')
   } finally {
     syncing.value = false
+  }
+}
+
+// ---- 标签/备注 ----
+const metaDialog = ref(false)
+const metaSaving = ref(false)
+const metaForm = ref({ id: 0, tags: '', remark: '' })
+
+function openMeta(row) {
+  metaForm.value = { id: row.id, tags: row.tags || '', remark: row.remark || '' }
+  metaDialog.value = true
+}
+
+async function saveMeta() {
+  metaSaving.value = true
+  try {
+    await updateDomainMeta(metaForm.value.id, {
+      tags: metaForm.value.tags.trim(),
+      remark: metaForm.value.remark,
+    })
+    ElMessage.success('已保存')
+    metaDialog.value = false
+    await load()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '保存失败')
+  } finally {
+    metaSaving.value = false
   }
 }
 

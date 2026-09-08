@@ -32,6 +32,13 @@ type Config struct {
 		Username string `mapstructure:"username"`
 		Password string `mapstructure:"password"`
 	} `mapstructure:"admin"`
+	OAuth struct {
+		GitHub struct {
+			Enabled    bool   `mapstructure:"enabled"`
+			ClientID   string `mapstructure:"client_id"`
+			ClientSecret string `mapstructure:"client_secret"`
+		} `mapstructure:"github"`
+	} `mapstructure:"oauth"`
 }
 
 // Load 读取配置：默认值 < config.yaml < 环境变量。

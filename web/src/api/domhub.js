@@ -11,6 +11,7 @@ export const syncAccount = (id) => http.post(`/accounts/${id}/sync`)
 // 域名台账
 export const listDomains = (params) => http.get('/domains', { params })
 export const syncAllDomains = () => http.post('/domains/sync')
+export const updateDomainMeta = (id, data) => http.patch(`/domains/${id}`, data)
 
 // 告警
 export const listChannels = () => http.get('/channels')
@@ -32,6 +33,17 @@ export const updateDNSRecord = (data) => http.put('/dns/records', data)
 export const deleteDNSRecord = (data) => http.delete('/dns/records', { data })
 export const planDNS = (data) => http.post('/dns/plan', data)
 export const pushDNS = (data) => http.post('/dns/push', data)
+
+// 解析记录快照
+export const listSnapshots = (accountId, zone, limit = 50) => http.get('/dns/snapshots', { params: { account_id: accountId, zone, limit } })
+export const captureSnapshot = (data) => http.post('/dns/snapshots', data)
+export const getSnapshot = (id) => http.get(`/dns/snapshots/${id}`)
+export const diffSnapshots = (baseId, targetId) => http.post('/dns/snapshots/diff', { base_id: baseId, target_id: targetId })
+export const restorePlan = (data) => http.post('/dns/snapshots/restore-plan', data)
+
+// 系统设置
+export const getSettings = () => http.get('/settings')
+export const updateSchedules = (specs) => http.put('/settings/schedules', specs)
 
 // 审计日志
 export const listAuditLogs = (params) => http.get('/audit-logs', { params })

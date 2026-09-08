@@ -9,6 +9,12 @@ const routes = [
     meta: { title: '登录' },
   },
   {
+    path: '/oauth/callback',
+    name: 'OAuthCallback',
+    component: () => import('../views/OAuthCallback.vue'),
+    meta: { title: 'OAuth 登录' },
+  },
+  {
     path: '/',
     component: () => import('../layout/MainLayout.vue'),
     redirect: '/dashboard',
@@ -59,8 +65,8 @@ const routes = [
       {
         path: 'settings',
         name: 'Settings',
-        component: () => import('../views/Placeholder.vue'),
-        meta: { title: '系统设置' },
+        component: () => import('../views/Settings.vue'),
+        meta: { title: '系统设置', adminOnly: true },
       },
     ],
   },
@@ -75,10 +81,10 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   document.title = `${to.meta.title || ''} · DomHub`
   const store = useUserStore()
-  if (to.path !== '/login' && !store.isLoggedIn) {
+  if (to.path !== '/login' && to.path !== '/oauth/callback' && !store.isLoggedIn) {
     return '/login'
   }
-  if (to.path === '/login' && store.isLoggedIn) {
+  if (to.path === '/login' && store.isLoggedIn && !window.location.hash.includes('token=')) {
     return '/dashboard'
   }
   // admin 页面守卫（store.user 未加载时先拉取）

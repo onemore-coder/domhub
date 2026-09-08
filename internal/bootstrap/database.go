@@ -49,6 +49,8 @@ func InitDB(cfg *config.Config) *gorm.DB {
 		&model.AlertLog{},
 		&model.SyncTask{},
 		&model.AuditLog{},
+		&model.DNSRecordSnapshot{},
+		&model.SystemSetting{},
 		&model.UserZone{},
 	); err != nil {
 		panic("数据库迁移失败: " + err.Error())

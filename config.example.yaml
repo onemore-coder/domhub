@@ -19,3 +19,11 @@ jwt:
 admin:
   username: admin
   password: admin123  # 首次启动 seeding 创建，登录后请修改
+
+# GitHub OAuth 登录（可选）。在 https://github.com/settings/developers 创建 OAuth App，
+# 回调地址填 https://your-domain/api/v1/auth/oauth/callback
+oauth:
+  github:
+    enabled: false
+    client_id: ""
+    client_secret: ""

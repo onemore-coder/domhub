@@ -205,40 +205,62 @@ func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, o
 // BuildPlan 比对现网记录与期望记录，生成变更计划（DNSControl 式 preview）。
 //
 // 规则：
-//   - 期望记录带 ID   → 与现网同 ID 记录比对，有差异为 update
-//   - 期望记录无 ID   → create
+//   - 期望记录带 ID 且现网存在  → 与同 ID 记录比对，有差异为 update
+//   - 期望记录无 ID / ID 不在现网（跨快照比较的新增记录）→ 先按内容键
+//     （主机记录+类型+线路）匹配现网剩余记录，匹配到则比对差异，否则 create
 //   - 现网记录未被引用 → delete（现网 ID 为空，如 AWS 别名记录，不可操作，跳过）
 func BuildPlan(actual, desired []provider.RecordInfo) ([]PlanAction, error) {
-	byID := make(map[string]provider.RecordInfo, len(actual))
-	for _, r := range actual {
+	idxByID := make(map[string]int, len(actual))
+	idxByKey := make(map[string][]int, len(actual))
+	for i, r := range actual {
 		if r.ID != "" {
-			byID[r.ID] = r
+			idxByID[r.ID] = i
 		}
+		k := recordKey(r)
+		idxByKey[k] = append(idxByKey[k], i)
 	}
-	used := make(map[string]bool, len(actual))
+	used := make(map[int]bool, len(actual))
 
 	var plan []PlanAction
 	for _, d := range desired {
-		if d.ID == "" {
-			plan = append(plan, PlanAction{Action: "create", Record: d})
+		if i, ok := idxByID[d.ID]; d.ID != "" && ok {
+			used[i] = true
+			if !recordEqual(actual[i], d) {
+				plan = append(plan, PlanAction{Action: "update", Record: d})
+			}
 			continue
 		}
-		actualRec, ok := byID[d.ID]
-		if !ok {
-			return nil, fmt.Errorf("记录不存在或不可编辑: %s %s", d.Type, d.Name)
+		// 无 ID 或 ID 不在现网（跨快照比较）：按内容键兜底匹配
+		matched := -1
+		for _, i := range idxByKey[recordKey(d)] {
+			if !used[i] {
+				matched = i
+				break
+			}
 		}
-		used[d.ID] = true
-		if !recordEqual(actualRec, d) {
-			plan = append(plan, PlanAction{Action: "update", Record: d})
+		if matched >= 0 {
+			used[matched] = true
+			if !recordEqual(actual[matched], d) {
+				plan = append(plan, PlanAction{Action: "update", Record: d})
+			}
+			continue
 		}
+		c := d
+		c.ID = "" // 新建动作不携带记录 ID
+		plan = append(plan, PlanAction{Action: "create", Record: c})
 	}
-	for _, r := range actual {
-		if r.ID == "" || used[r.ID] {
+	for i, r := range actual {
+		if r.ID == "" || used[i] {
 			continue
 		}
 		plan = append(plan, PlanAction{Action: "delete", Record: r})
 	}
 	return plan, nil
+}
+
+// recordKey 记录内容键：主机记录 + 类型 + 线路。
+func recordKey(r provider.RecordInfo) string {
+	return r.Name + "|" + r.Type + "|" + normalizeLine(r.Line)
 }
 
 // recordEqual 比较两条记录的关键字段。

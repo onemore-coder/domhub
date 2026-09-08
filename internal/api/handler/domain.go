@@ -51,3 +51,25 @@ func (h *DomainHandler) SyncAll(c *gin.Context) {
 	go h.accountSvc.SyncAll()
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "同步任务已触发"})
 }
+
+// UpdateMeta PATCH /api/v1/domains/:id —— 更新本地标签/备注。
+func (h *DomainHandler) UpdateMeta(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if id == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "无效 ID"})
+		return
+	}
+	var req struct {
+		Tags   *string `json:"tags"`   // 逗号分隔；传空串清空
+		Remark *string `json:"remark"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
+		return
+	}
+	if err := h.domains.UpdateMeta(uint(id), req.Tags, req.Remark); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "已保存"})
+}

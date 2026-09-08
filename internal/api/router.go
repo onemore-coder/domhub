@@ -20,8 +20,9 @@ import (
 	"github.com/domhub-io/domhub/internal/service"
 )
 
-// NewRouter 构建 gin 引擎。
-func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
+// NewRouter 构建 gin 引擎。scheduleApplier 由 job.Scheduler 实现（可 nil），
+// 用于设置页更新任务计划后热生效。
+func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier service.ScheduleApplier) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 
 	r := gin.New()
@@ -52,6 +53,11 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
 	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo, grantRepo)
 	userSvc := service.NewUserService(repo.NewUserRepo(db), grantRepo, auditRepo)
+	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
+	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
+	if scheduleApplier != nil {
+		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
+	}
 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
 	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
@@ -59,6 +65,8 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	dnsH := handler.NewDNSHandler(dnsSvc)
 	auditH := handler.NewAuditHandler(auditRepo)
 	userH := handler.NewUserHandler(userSvc, authSvc)
+	snapshotH := handler.NewSnapshotHandler(snapshotSvc)
+	settingsH := handler.NewSettingsHandler(settingsSvc, db)
 
 	adminOnly := middleware.RequireRole(model.RoleAdmin)
 	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
@@ -67,6 +75,18 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	{
 		auth.POST("/login", authH.Login)
 		auth.POST("/logout", authH.Logout)
+		// M4：GitHub OAuth（无需 JWT）
+		oauthSvc := service.NewOAuthService(
+			service.GitHubOAuthConf{
+				Enabled:      cfg.OAuth.GitHub.Enabled,
+				ClientID:     cfg.OAuth.GitHub.ClientID,
+				ClientSecret: cfg.OAuth.GitHub.ClientSecret,
+			},
+			repo.NewUserRepo(db), db, cfg.JWT.Secret, cfg.JWT.ExpireHours)
+		oauthH := handler.NewOAuthHandler(oauthSvc)
+		auth.GET("/oauth/providers", oauthH.Providers)
+		auth.GET("/oauth/github", oauthH.GitHubStart)
+		auth.GET("/oauth/github/callback", oauthH.GitHubCallback)
 	}
 
 	protected := api.Group("")
@@ -136,6 +156,18 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	protected.GET("/users/:id/zones", adminOnly, userH.Grants)
 	protected.PUT("/users/:id/zones", adminOnly, userH.SetGrants)
 	protected.POST("/users/me/password", userH.ChangePassword)
+
+	// M4：解析记录快照（读需登录，写需 operator+）
+	protected.GET("/dns/snapshots", snapshotH.List)
+	protected.GET("/dns/snapshots/:id", snapshotH.Get)
+	protected.POST("/dns/snapshots", writeAccess, snapshotH.Capture)
+	protected.POST("/dns/snapshots/diff", snapshotH.Diff)
+	protected.POST("/dns/snapshots/restore-plan", writeAccess, snapshotH.RestorePlan)
+
+	// M4：域名标签/备注 + 系统设置
+	protected.PATCH("/domains/:id", writeAccess, domainH.UpdateMeta)
+	protected.GET("/settings", adminOnly, settingsH.Get)
+	protected.PUT("/settings/schedules", adminOnly, settingsH.Update)
 	}
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）

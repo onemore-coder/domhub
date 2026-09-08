@@ -17,6 +17,7 @@
         <el-button type="success" plain :disabled="!zone || !changed" @click="openPlanDialog">
           预览变更{{ planCount ? `（${planCount}）` : '' }}
         </el-button>
+        <el-button :disabled="!zone" @click="openSnapshots">快照</el-button>
       </div>
     </el-card>
 
@@ -131,6 +132,57 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 快照抽屉 -->
+    <el-drawer v-model="snapshotDrawer" :title="`解析快照 · ${zone}`" size="62%">
+      <div class="snap-toolbar">
+        <el-button type="primary" size="small" :loading="snapCapturing" @click="captureNow">保存当前快照</el-button>
+        <el-button size="small" :disabled="snapSelection.length !== 2" @click="diffSelected">
+          比较选中两份{{ snapSelection.length === 2 ? `（${snapDiffLabel}）` : '' }}
+        </el-button>
+        <span class="snap-hint">查看记录时会自动保存快照；每 Zone 最多保留 50 份</span>
+      </div>
+      <el-table :data="snapshots" size="small" @selection-change="(v) => (snapSelection = v)">
+        <el-table-column type="selection" width="42" />
+        <el-table-column label="时间" width="170">
+          <template #default="{ row }">{{ (row.created_at || '').replace('T', ' ').slice(0, 19) }}</template>
+        </el-table-column>
+        <el-table-column label="来源" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="{ view: 'info', manual: 'success', drift: 'danger' }[row.source] || 'info'">
+              {{ { view: '查看', manual: '手动', drift: '漂移' }[row.source] || row.source }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="记录数" prop="count" width="80" />
+        <el-table-column label="备注" prop="note" min-width="160" show-overflow-tooltip />
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="warning" size="small" @click="restoreFrom(row)">恢复此快照</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-dialog v-model="snapDiffVisible" title="快照比较（基准 → 目标）" width="640px" append-to-body>
+        <el-alert v-if="snapDiffPlan.length" type="warning" :closable="false" show-icon
+          :title="`两份快照间共 ${snapDiffPlan.length} 处差异`" />
+        <el-empty v-else description="两份快照内容一致" :image-size="60" />
+        <el-table v-if="snapDiffPlan.length" :data="snapDiffPlan" size="small" max-height="360">
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.action === 'create' ? 'success' : row.action === 'delete' ? 'danger' : 'warning'">
+                {{ { create: '新增', update: '修改', delete: '删除' }[row.action] }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="主机记录" prop="record.name" width="110" />
+          <el-table-column label="类型" prop="record.type" width="70" />
+          <el-table-column label="记录值" min-width="220">
+            <template #default="{ row }"><span class="record-value">{{ row.record.value }}</span></template>
+          </el-table-column>
+        </el-table>
+      </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -142,6 +194,7 @@ import {
   listAccounts, listDNSZones, listDNSRecords,
   createDNSRecord, updateDNSRecord, deleteDNSRecord,
   planDNS, pushDNS,
+  listSnapshots, captureSnapshot, diffSnapshots, restorePlan,
 } from '../api/domhub'
 
 const accounts = ref([])
@@ -162,6 +215,14 @@ const planDialogVisible = ref(false)
 const planLoading = ref(false)
 const planActions = ref([])
 const pushing = ref(false)
+
+const snapshotDrawer = ref(false)
+const snapshots = ref([])
+const snapCapturing = ref(false)
+const snapSelection = ref([])
+const snapDiffVisible = ref(false)
+const snapDiffPlan = ref([])
+const snapDiffLabel = ref('')
 
 const recordTypes = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'CAA', 'SRV']
 const ttlOptions = [60, 300, 600, 900, 1800, 3600, 7200, 86400]
@@ -335,10 +396,79 @@ async function execPush() {
     }
     planDialogVisible.value = false
     await loadRecords()
+    // 变更后自动留存快照，作为漂移检测的新基线
+    try {
+      await captureSnapshot({ account_id: accountId.value, zone: zone.value, note: '变更执行后自动快照' })
+    } catch { /* 快照失败不影响主流程 */ }
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '执行失败')
   } finally {
     pushing.value = false
+  }
+}
+
+// ---- 快照 ----
+async function openSnapshots() {
+  snapshotDrawer.value = true
+  await loadSnapshots()
+}
+
+async function loadSnapshots() {
+  try {
+    const res = await listSnapshots(accountId.value, zone.value)
+    snapshots.value = res.data || []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '拉取快照失败')
+  }
+}
+
+async function captureNow() {
+  snapCapturing.value = true
+  try {
+    await captureSnapshot({ account_id: accountId.value, zone: zone.value, note: '手动快照' })
+    ElMessage.success('快照已保存')
+    await loadSnapshots()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '保存快照失败')
+  } finally {
+    snapCapturing.value = false
+  }
+}
+
+async function diffSelected() {
+  const sel = [...snapSelection.value].sort((a, b) => a.id - b.id)
+  const [base, target] = sel
+  snapDiffLabel.value = `${(base.created_at || '').slice(5, 16)} → ${(target.created_at || '').slice(5, 16)}`
+  try {
+    const res = await diffSnapshots(base.id, target.id)
+    snapDiffPlan.value = res.data?.plan || []
+    snapDiffVisible.value = true
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '比较失败')
+  }
+}
+
+async function restoreFrom(row) {
+  try {
+    await ElMessageBox.confirm(
+      `将以 ${(row.created_at || '').replace('T', ' ').slice(0, 19)} 的快照（${row.count} 条记录）为目标生成恢复计划。现网与快照的差异将生成对应的增/改/删操作，确认后才执行。`,
+      '从快照恢复',
+      { type: 'warning', confirmButtonText: '生成恢复计划', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await restorePlan({ account_id: accountId.value, zone: zone.value, snapshot_id: row.id })
+    planActions.value = res.data || []
+    snapshotDrawer.value = false
+    if (!planActions.value.length) {
+      ElMessage.info('现网与该快照一致，无需恢复')
+      return
+    }
+    planDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '生成恢复计划失败')
   }
 }
 </script>
@@ -363,5 +493,15 @@ async function execPush() {
 }
 .plan-alert {
   margin-bottom: 12px;
+}
+.snap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.snap-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>
