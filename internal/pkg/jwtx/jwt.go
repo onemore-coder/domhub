@@ -12,15 +12,17 @@ import (
 type Claims struct {
 	UserID   uint   `json:"uid"`
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // GenerateToken 为指定用户签发 JWT。
-func GenerateToken(userID uint, username, secret string, expireHours int) (string, error) {
+func GenerateToken(userID uint, username, role, secret string, expireHours int) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "domhub",
 			IssuedAt:  jwt.NewNumericDate(now),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/domhub-io/domhub/internal/api/handler"
 	"github.com/domhub-io/domhub/internal/api/middleware"
+	"github.com/domhub-io/domhub/internal/model"
 	"github.com/domhub-io/domhub/internal/pkg/config"
 	"github.com/domhub-io/domhub/internal/pkg/cryptox"
 	"github.com/domhub-io/domhub/internal/pkg/logger"
@@ -43,18 +44,24 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	alertRepo := repo.NewAlertRepo(db)
 	taskRepo := repo.NewSyncTaskRepo(db)
 	auditRepo := repo.NewAuditRepo(db)
+	grantRepo := repo.NewGrantRepo(db)
 
 	dashH := handler.NewDashboardHandler(accountRepo, domainRepo)
 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
-	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo)
+	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo, grantRepo)
+	userSvc := service.NewUserService(repo.NewUserRepo(db), grantRepo, auditRepo)
 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
 	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
 	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
 	dnsH := handler.NewDNSHandler(dnsSvc)
 	auditH := handler.NewAuditHandler(auditRepo)
+	userH := handler.NewUserHandler(userSvc, authSvc)
+
+	adminOnly := middleware.RequireRole(model.RoleAdmin)
+	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
 
 	auth := api.Group("/auth")
 	{
@@ -68,39 +75,59 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
 
-		protected.GET("/accounts", accountH.List)
-		protected.POST("/accounts", accountH.Create)
-		protected.PUT("/accounts/:id", accountH.Update)
-		protected.DELETE("/accounts/:id", accountH.Delete)
-		protected.POST("/accounts/:id/check", accountH.Check)
-		protected.POST("/accounts/:id/sync", accountH.Sync)
+	// 云账号：读所有登录用户可见（AK 已脱敏），写需 operator+；用户/凭证管理 admin 专属
+	accountGroup := protected.Group("/accounts")
+	{
+		accountGroup.GET("", accountH.List)
+		accountGroup.POST("", writeAccess, accountH.Create)
+		accountGroup.PUT("/:id", writeAccess, accountH.Update)
+		accountGroup.DELETE("/:id", adminOnly, accountH.Delete)
+		accountGroup.POST("/:id/check", writeAccess, accountH.Check)
+		accountGroup.POST("/:id/sync", writeAccess, accountH.Sync)
+	}
 
-		protected.GET("/domains", domainH.List)
-		protected.POST("/domains/sync", domainH.SyncAll)
+	protected.GET("/domains", domainH.List)
+	protected.POST("/domains/sync", writeAccess, domainH.SyncAll)
 
-		protected.GET("/channels", alertH.ListChannels)
-		protected.POST("/channels", alertH.CreateChannel)
-		protected.PUT("/channels/:id", alertH.UpdateChannel)
-		protected.DELETE("/channels/:id", alertH.DeleteChannel)
+	channelGroup := protected.Group("/channels")
+	{
+		channelGroup.GET("", alertH.ListChannels)
+		channelGroup.POST("", adminOnly, alertH.CreateChannel)
+		channelGroup.PUT("/:id", adminOnly, alertH.UpdateChannel)
+		channelGroup.DELETE("/:id", adminOnly, alertH.DeleteChannel)
+	}
 
-		protected.GET("/alert-rules", alertH.ListRules)
-		protected.POST("/alert-rules", alertH.CreateRule)
-		protected.PUT("/alert-rules/:id", alertH.UpdateRule)
-		protected.DELETE("/alert-rules/:id", alertH.DeleteRule)
+	ruleGroup := protected.Group("/alert-rules")
+	{
+		ruleGroup.GET("", alertH.ListRules)
+		ruleGroup.POST("", adminOnly, alertH.CreateRule)
+		ruleGroup.PUT("/:id", adminOnly, alertH.UpdateRule)
+		ruleGroup.DELETE("/:id", adminOnly, alertH.DeleteRule)
+	}
 
-		protected.POST("/alerts/check", alertH.RunCheck)
-		protected.GET("/alerts/logs", alertH.ListLogs)
+	protected.POST("/alerts/check", writeAccess, alertH.RunCheck)
+	protected.GET("/alerts/logs", alertH.ListLogs)
 
-		// M2：DNS 解析管理 + 审计
-		protected.GET("/dns/zones", dnsH.ListZones)
-		protected.GET("/dns/records", dnsH.ListRecords)
-		protected.POST("/dns/records", dnsH.CreateRecord)
-		protected.PUT("/dns/records", dnsH.UpdateRecord)
-		protected.DELETE("/dns/records", dnsH.DeleteRecord)
-		protected.POST("/dns/plan", dnsH.Plan)
-		protected.POST("/dns/push", dnsH.Push)
+	// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
+	protected.GET("/dns/zones", dnsH.ListZones)
+	protected.GET("/dns/records", dnsH.ListRecords)
+	protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)
+	protected.PUT("/dns/records", writeAccess, dnsH.UpdateRecord)
+	protected.DELETE("/dns/records", writeAccess, dnsH.DeleteRecord)
+	protected.POST("/dns/plan", dnsH.Plan)
+	protected.POST("/dns/push", writeAccess, dnsH.Push)
 
-		protected.GET("/audit-logs", auditH.List)
+	// M2：审计日志（admin 专属）
+	protected.GET("/audit-logs", adminOnly, auditH.List)
+
+	// M3：用户管理与个人改密
+	protected.GET("/users", adminOnly, userH.List)
+	protected.POST("/users", adminOnly, userH.Create)
+	protected.PUT("/users/:id", adminOnly, userH.Update)
+	protected.DELETE("/users/:id", adminOnly, userH.Delete)
+	protected.GET("/users/:id/zones", adminOnly, userH.Grants)
+	protected.PUT("/users/:id/zones", adminOnly, userH.SetGrants)
+	protected.POST("/users/me/password", userH.ChangePassword)
 	}
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）

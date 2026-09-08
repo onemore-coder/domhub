@@ -44,7 +44,7 @@ func (s *AuthService) Login(username, password string) (*model.User, string, err
 		return nil, "", ErrInvalidCredentials
 	}
 
-	token, err := jwtx.GenerateToken(u.ID, u.Username, s.jwtSecret, s.expireHours)
+	token, err := jwtx.GenerateToken(u.ID, u.Username, u.Role, s.jwtSecret, s.expireHours)
 	if err != nil {
 		return nil, "", err
 	}
@@ -60,4 +60,24 @@ func (s *AuthService) Login(username, password string) (*model.User, string, err
 // GetByID 按 ID 查询用户。
 func (s *AuthService) GetByID(id uint) (*model.User, error) {
 	return s.users.FindByID(id)
+}
+
+// ChangePassword 修改当前用户密码（需校验旧密码）。
+func (s *AuthService) ChangePassword(userID uint, oldPassword, newPassword string) error {
+	if len(newPassword) < 6 {
+		return errors.New("新密码至少 6 位")
+	}
+	u, err := s.users.FindByID(userID)
+	if err != nil || u == nil {
+		return errors.New("用户不存在")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(oldPassword)) != nil {
+		return errors.New("旧密码错误")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	u.PasswordHash = string(hash)
+	return s.users.Update(u)
 }

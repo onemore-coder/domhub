@@ -19,12 +19,9 @@ func NewDNSHandler(dnsSvc *service.DNSService) *DNSHandler {
 	return &DNSHandler{dnsSvc: dnsSvc}
 }
 
-func ctxUser(c *gin.Context) (uint, string) {
-	id, _ := c.Get(middleware.CtxUserID)
-	uid, _ := id.(uint)
-	username, _ := c.Get(middleware.CtxUsername)
-	un, _ := username.(string)
-	return uid, un
+func ctxActor(c *gin.Context) service.Actor {
+	uid, username, role := middleware.CtxUser(c)
+	return service.Actor{ID: uid, Username: username, Role: role}
 }
 
 // ListZones GET /api/v1/dns/zones?account_id=1
@@ -34,7 +31,7 @@ func (h *DNSHandler) ListZones(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "缺少 account_id"})
 		return
 	}
-	zones, err := h.dnsSvc.ListZones(uint(accountID))
+	zones, err := h.dnsSvc.ListZones(uint(accountID), ctxActor(c))
 	if err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
@@ -53,7 +50,7 @@ func (h *DNSHandler) ListRecords(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "缺少 account_id 或 zone"})
 		return
 	}
-	records, err := h.dnsSvc.ListRecords(uint(accountID), zone)
+	records, err := h.dnsSvc.ListRecords(uint(accountID), zone, ctxActor(c))
 	if err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
@@ -84,12 +81,12 @@ func (h *DNSHandler) CreateRecord(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
 		return
 	}
-	uid, username := ctxUser(c)
+	op := ctxActor(c)
 	rec := provider.RecordInfo{
 		Name: req.Name, Type: req.Type, Value: req.Value,
 		TTL: req.TTL, Priority: req.Priority, Line: req.Line,
 	}
-	id, err := h.dnsSvc.CreateRecord(req.AccountID, req.Zone, rec, uid, username)
+	id, err := h.dnsSvc.CreateRecord(req.AccountID, req.Zone, rec, op)
 	if err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
@@ -108,13 +105,13 @@ func (h *DNSHandler) UpdateRecord(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "缺少 record_id"})
 		return
 	}
-	uid, username := ctxUser(c)
+	op := ctxActor(c)
 	rec := provider.RecordInfo{
 		ID: req.RecordID,
 		Name: req.Name, Type: req.Type, Value: req.Value,
 		TTL: req.TTL, Priority: req.Priority, Line: req.Line,
 	}
-	if err := h.dnsSvc.UpdateRecord(req.AccountID, req.Zone, rec, uid, username); err != nil {
+	if err := h.dnsSvc.UpdateRecord(req.AccountID, req.Zone, rec, op); err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
 	}
@@ -132,8 +129,8 @@ func (h *DNSHandler) DeleteRecord(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "缺少 record_id"})
 		return
 	}
-	uid, username := ctxUser(c)
-	if err := h.dnsSvc.DeleteRecord(req.AccountID, req.Zone, req.RecordID, req.Desc, uid, username); err != nil {
+	op := ctxActor(c)
+	if err := h.dnsSvc.DeleteRecord(req.AccountID, req.Zone, req.RecordID, req.Desc, op); err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
 	}
@@ -155,7 +152,7 @@ func (h *DNSHandler) Plan(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
 		return
 	}
-	actual, err := h.dnsSvc.ListRecords(req.AccountID, req.Zone)
+	actual, err := h.dnsSvc.ListRecords(req.AccountID, req.Zone, ctxActor(c))
 	if err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return
@@ -182,8 +179,8 @@ func (h *DNSHandler) Push(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "变更计划为空"})
 		return
 	}
-	uid, username := ctxUser(c)
-	results, err := h.dnsSvc.Push(req.AccountID, req.Zone, req.Actions, uid, username)
+	op := ctxActor(c)
+	results, err := h.dnsSvc.Push(req.AccountID, req.Zone, req.Actions, op)
 	if err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
 		return

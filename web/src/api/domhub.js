@@ -35,3 +35,12 @@ export const pushDNS = (data) => http.post('/dns/push', data)
 
 // 审计日志
 export const listAuditLogs = (params) => http.get('/audit-logs', { params })
+
+// 用户管理
+export const listUsers = () => http.get('/users')
+export const createUser = (data) => http.post('/users', data)
+export const updateUser = (id, data) => http.put(`/users/${id}`, data)
+export const deleteUser = (id) => http.delete(`/users/${id}`)
+export const getUserZones = (id) => http.get(`/users/${id}/zones`)
+export const setUserZones = (id, grants) => http.put(`/users/${id}/zones`, { grants })
+export const changeMyPassword = (data) => http.post('/users/me/password', data)

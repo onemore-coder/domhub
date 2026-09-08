@@ -48,7 +48,13 @@ const routes = [
         path: 'audit',
         name: 'Audit',
         component: () => import('../views/Audit.vue'),
-        meta: { title: '审计日志' },
+        meta: { title: '审计日志', adminOnly: true },
+      },
+      {
+        path: 'users',
+        name: 'Users',
+        component: () => import('../views/Users.vue'),
+        meta: { title: '用户与权限', adminOnly: true },
       },
       {
         path: 'settings',
@@ -66,13 +72,20 @@ const router = createRouter({
 })
 
 // 登录守卫
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   document.title = `${to.meta.title || ''} · DomHub`
   const store = useUserStore()
   if (to.path !== '/login' && !store.isLoggedIn) {
     return '/login'
   }
   if (to.path === '/login' && store.isLoggedIn) {
+    return '/dashboard'
+  }
+  // admin 页面守卫（store.user 未加载时先拉取）
+  if (to.meta.adminOnly && store.isLoggedIn && !store.user) {
+    await store.fetchMe().catch(() => {})
+  }
+  if (to.meta.adminOnly && store.user?.role !== 'admin') {
     return '/dashboard'
   }
   return true

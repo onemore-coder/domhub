@@ -32,10 +32,26 @@ type DNSService struct {
 	accounts *repo.CloudAccountRepo
 	cipher   *cryptox.Cipher
 	audit    *repo.AuditRepo
+	grants   *repo.GrantRepo
 }
 
-func NewDNSService(accounts *repo.CloudAccountRepo, cipher *cryptox.Cipher, audit *repo.AuditRepo) *DNSService {
-	return &DNSService{accounts: accounts, cipher: cipher, audit: audit}
+func NewDNSService(accounts *repo.CloudAccountRepo, cipher *cryptox.Cipher, audit *repo.AuditRepo, grants *repo.GrantRepo) *DNSService {
+	return &DNSService{accounts: accounts, cipher: cipher, audit: audit, grants: grants}
+}
+
+// hasZoneAccess admin 直通；其他角色按 user_zones 授权判定。
+func (s *DNSService) hasZoneAccess(userID uint, role string, accountID uint, zone string) (bool, error) {
+	if role == model.RoleAdmin {
+		return true, nil
+	}
+	return s.grants.Exists(userID, accountID, zone)
+}
+
+// Actor 操作者三要素（来自 JWT 上下文）。
+type Actor struct {
+	ID       uint
+	Username string
+	Role     string
 }
 
 // buildDNSProvider 构建账号对应的 DNS Provider。
@@ -59,8 +75,8 @@ func (s *DNSService) getAccount(id uint) (*model.CloudAccount, error) {
 	return s.accounts.FindByID(id)
 }
 
-// ListZones 列出账号下托管解析的 Zone。
-func (s *DNSService) ListZones(accountID uint) ([]provider.ZoneInfo, error) {
+// ListZones 列出账号下托管解析的 Zone（非 admin 仅返回被授权的 Zone）。
+func (s *DNSService) ListZones(accountID uint, op Actor) ([]provider.ZoneInfo, error) {
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -71,11 +87,33 @@ func (s *DNSService) ListZones(accountID uint) ([]provider.ZoneInfo, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	return p.ListZones(ctx)
+	zones, err := p.ListZones(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if op.Role != model.RoleAdmin {
+		allowed, err := s.grants.ZonesByUserAndAccount(op.ID, accountID)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]provider.ZoneInfo, 0, len(zones))
+		for _, z := range zones {
+			if allowed[z.Name] {
+				filtered = append(filtered, z)
+			}
+		}
+		zones = filtered
+	}
+	return zones, nil
 }
 
-// ListRecords 拉取 Zone 的全部解析记录。
-func (s *DNSService) ListRecords(accountID uint, zone string) ([]provider.RecordInfo, error) {
+// ListRecords 拉取 Zone 的全部解析记录（非 admin 需有该 Zone 授权）。
+func (s *DNSService) ListRecords(accountID uint, zone string, op Actor) ([]provider.RecordInfo, error) {
+	if ok, err := s.hasZoneAccess(op.ID, op.Role, accountID, zone); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("无权访问该域名（需要管理员授权）")
+	}
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -89,8 +127,13 @@ func (s *DNSService) ListRecords(accountID uint, zone string) ([]provider.Record
 	return p.ListRecords(ctx, zone)
 }
 
-// CreateRecord 创建解析记录并审计。
-func (s *DNSService) CreateRecord(accountID uint, zone string, rec provider.RecordInfo, userID uint, username string) (string, error) {
+// CreateRecord 创建解析记录并审计（非 admin 需有该 Zone 授权）。
+func (s *DNSService) CreateRecord(accountID uint, zone string, rec provider.RecordInfo, op Actor) (string, error) {
+	if ok, err := s.hasZoneAccess(op.ID, op.Role, accountID, zone); err != nil {
+		return "", err
+	} else if !ok {
+		return "", fmt.Errorf("无权操作该域名（需要管理员授权）")
+	}
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return "", err
@@ -105,12 +148,17 @@ func (s *DNSService) CreateRecord(accountID uint, zone string, rec provider.Reco
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	id, err := p.CreateRecord(ctx, zone, rec)
-	s.writeAudit(userID, username, "dns.create", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
+	s.writeAudit(op.ID, op.Username, "dns.create", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
 	return id, err
 }
 
-// UpdateRecord 更新解析记录并审计。
-func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.RecordInfo, userID uint, username string) error {
+// UpdateRecord 更新解析记录并审计（非 admin 需有该 Zone 授权）。
+func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.RecordInfo, op Actor) error {
+	if ok, err := s.hasZoneAccess(op.ID, op.Role, accountID, zone); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("无权操作该域名（需要管理员授权）")
+	}
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return err
@@ -125,12 +173,17 @@ func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.Reco
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err = p.UpdateRecord(ctx, zone, rec)
-	s.writeAudit(userID, username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
+	s.writeAudit(op.ID, op.Username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
 	return err
 }
 
-// DeleteRecord 删除解析记录并审计。
-func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, userID uint, username string) error {
+// DeleteRecord 删除解析记录并审计（非 admin 需有该 Zone 授权）。
+func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, op Actor) error {
+	if ok, err := s.hasZoneAccess(op.ID, op.Role, accountID, zone); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("无权操作该域名（需要管理员授权）")
+	}
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return err
@@ -145,7 +198,7 @@ func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, u
 	if desc == "" {
 		desc = recordID
 	}
-	s.writeAudit(userID, username, "dns.delete", a.Provider+"/"+zone+"/"+desc, map[string]string{"record_id": recordID}, err)
+	s.writeAudit(op.ID, op.Username, "dns.delete", a.Provider+"/"+zone+"/"+desc, map[string]string{"record_id": recordID}, err)
 	return err
 }
 
@@ -245,8 +298,13 @@ func normalizeLine(l string) string {
 	}
 }
 
-// Push 执行变更计划并逐条审计。
-func (s *DNSService) Push(accountID uint, zone string, actions []PlanAction, userID uint, username string) ([]PlanResult, error) {
+// Push 执行变更计划并逐条审计（非 admin 需有该 Zone 授权）。
+func (s *DNSService) Push(accountID uint, zone string, actions []PlanAction, op Actor) ([]PlanResult, error) {
+	if ok, err := s.hasZoneAccess(op.ID, op.Role, accountID, zone); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("无权操作该域名（需要管理员授权）")
+	}
 	a, err := s.getAccount(accountID)
 	if err != nil {
 		return nil, err
@@ -278,7 +336,7 @@ func (s *DNSService) Push(accountID uint, zone string, actions []PlanAction, use
 		if err != nil {
 			res.Message = err.Error()
 		}
-		s.writeAudit(userID, username, "dns."+act.Action,
+		s.writeAudit(op.ID, op.Username, "dns."+act.Action,
 			a.Provider+"/"+zone+"/"+act.Record.Type+" "+act.Record.Name, act.Record, err)
 		results = append(results, res)
 	}
