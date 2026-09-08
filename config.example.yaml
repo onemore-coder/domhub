@@ -16,6 +16,12 @@ jwt:
   secret: ""        # 必填！生产环境通过 DOMHUB_JWT_SECRET 环境变量注入
   expire_hours: 24  # token 有效期（小时）
 
+crypto:
+  # 云凭证（AK/SK）加密密钥，可用 DOMHUB_CRYPTO_KEY 覆盖。
+  # 不设置时回退为 jwt.secret——注意：日后更换 JWT secret 会导致已存凭证无法解密，
+  # 生产环境建议生成随机长字符串显式固定，且一经使用不可变更（否则需重新录入全部凭证）。
+  key: ""
+
 admin:
   username: admin
   password: admin123  # 首次启动 seeding 创建，登录后请修改
