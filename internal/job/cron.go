@@ -3,6 +3,7 @@ package job
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -80,8 +81,10 @@ func (s *Scheduler) jobFunc(name string) func() {
 // ApplySchedules 注册/更新任务计划（实现 service.ScheduleApplier）。
 // spec 为空或 "-" 表示禁用该任务；支持 5 位或 7 位 cron 表达式。
 // specs 可只传变更项；其余保持不变。
+// key 兼容任务名（expiry_check）与 settings 键（expiry_check_cron）两种写法。
 func (s *Scheduler) ApplySchedules(specs map[string]string) error {
-	for name, spec := range specs {
+	for key, spec := range specs {
+		name := strings.TrimSuffix(key, "_cron")
 		fn := s.jobFunc(name)
 		if fn == nil {
 			return fmt.Errorf("未知任务: %s", name)

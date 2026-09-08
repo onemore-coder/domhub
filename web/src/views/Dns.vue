@@ -2,22 +2,37 @@
   <div class="dns-page">
     <el-card shadow="never" class="toolbar-card">
       <div class="toolbar">
-        <el-select v-model="accountId" placeholder="选择云账号" style="width: 220px" @change="onAccountChange">
+        <el-select v-model="accountFilter" style="width: 190px">
+          <el-option :value="0" label="全部账号" />
           <el-option v-for="a in accounts" :key="a.id" :value="a.id" :label="`${a.name}（${a.provider}）`" />
         </el-select>
         <el-select
-          v-model="zone" placeholder="选择托管域名" style="width: 220px"
-          :loading="zonesLoading" :disabled="!accountId" @change="loadRecords"
+          v-model="zoneKey" filterable clearable placeholder="搜索或选择托管域名" style="width: 320px"
+          :loading="zonesLoading" @change="onZoneChange" @clear="onZoneClear"
         >
-          <el-option v-for="z in zones" :key="z.name" :value="z.name" :label="`${z.name}（${z.record_count} 条）`" />
+          <el-option v-for="z in filteredZones" :key="z.key" :value="z.key" :label="z.name">
+            <div class="zone-option">
+              <span class="zone-name">{{ z.name }}</span>
+              <span class="zone-meta">{{ z.account_name }} · {{ providerLabel(z.provider) }} · {{ z.record_count }} 条</span>
+            </div>
+          </el-option>
         </el-select>
-        <el-button :icon="Refresh" :loading="recordsLoading" :disabled="!zone" @click="loadRecords">刷新</el-button>
+        <el-tag v-if="selectedZoneAccountName" size="small" effect="plain" type="info">
+          {{ selectedZoneAccountName }} · {{ providerLabel(selectedZoneProvider) }}
+        </el-tag>
+        <el-button :icon="Refresh" :loading="zonesLoading" :disabled="!selectedZoneName" @click="loadRecords">刷新</el-button>
         <div class="spacer" />
-        <el-button type="primary" :icon="Plus" :disabled="!zone" @click="openCreate">添加记录</el-button>
-        <el-button type="success" plain :disabled="!zone || !changed" @click="openPlanDialog">
+        <el-button type="primary" :icon="Plus" :disabled="!selectedZoneName" @click="openCreate">添加记录</el-button>
+        <el-button type="success" plain :disabled="!selectedZoneName || !changed" @click="openPlanDialog">
           预览变更{{ planCount ? `（${planCount}）` : '' }}
         </el-button>
-        <el-button :disabled="!zone" @click="openSnapshots">快照</el-button>
+        <el-button :disabled="!selectedZoneName" @click="openSnapshots">快照</el-button>
+      </div>
+      <div v-if="zonesSummary" class="zones-summary">
+        <span v-if="zonesLoading">正在拉取各账号托管域名…（{{ zonesProgress }}/{{ accounts.length }}）</span>
+        <span v-else>
+          共 {{ filteredZones.length }} 个托管域名<template v-if="accountFilter">（已按账号筛选）</template>，来自 {{ zoneAccountCount }} 个云账号
+        </span>
       </div>
     </el-card>
 
@@ -51,7 +66,7 @@
           </template>
         </el-table-column>
         <template #empty>
-          <el-empty :description="zone ? '该域名下暂无解析记录' : '请先选择云账号与托管域名'" />
+          <el-empty :description="selectedZoneName ? '该域名下暂无解析记录' : '请搜索或选择托管域名'" />
         </template>
       </el-table>
     </el-card>
@@ -134,7 +149,7 @@
     </el-dialog>
 
     <!-- 快照抽屉 -->
-    <el-drawer v-model="snapshotDrawer" :title="`解析快照 · ${zone}`" size="62%">
+    <el-drawer v-model="snapshotDrawer" :title="`解析快照 · ${selectedZoneName}`" size="62%">
       <div class="snap-toolbar">
         <el-button type="primary" size="small" :loading="snapCapturing" @click="captureNow">保存当前快照</el-button>
         <el-button size="small" :disabled="snapSelection.length !== 2" @click="diffSelected">
@@ -198,10 +213,11 @@ import {
 } from '../api/domhub'
 
 const accounts = ref([])
-const accountId = ref(null)
-const zones = ref([])
-const zone = ref('')
+const accountFilter = ref(0) // 0 = 全部账号
+const zonesAll = ref([]) // 聚合后的扁平 Zone 列表：{ key, account_id, account_name, provider, name, record_count }
+const zoneKey = ref('') // `${account_id}:${zone_name}`
 const zonesLoading = ref(false)
+const zonesProgress = ref(0)
 const recordsLoading = ref(false)
 const records = ref([])
 const snapshot = ref([]) // 现网快照，用于本地变更计数
@@ -227,8 +243,21 @@ const snapDiffLabel = ref('')
 const recordTypes = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'CAA', 'SRV']
 const ttlOptions = [60, 300, 600, 900, 1800, 3600, 7200, 86400]
 
-const currentAccount = computed(() => accounts.value.find((a) => a.id === accountId.value))
-const isCNProvider = computed(() => ['aliyun', 'tencent'].includes(currentAccount.value?.provider))
+const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS' }[p] || p)
+
+// 当前选中的聚合 Zone 对象
+const selectedZone = computed(() => zonesAll.value.find((z) => z.key === zoneKey.value) || null)
+const selectedAccountId = computed(() => selectedZone.value?.account_id || null)
+const selectedZoneName = computed(() => selectedZone.value?.name || '')
+const selectedZoneAccountName = computed(() => selectedZone.value?.account_name || '')
+const selectedZoneProvider = computed(() => selectedZone.value?.provider || '')
+const isCNProvider = computed(() => ['aliyun', 'tencent'].includes(selectedZoneProvider.value))
+
+const filteredZones = computed(() =>
+  zonesAll.value.filter((z) => !accountFilter.value || z.account_id === accountFilter.value))
+
+const zoneAccountCount = computed(() => new Set(filteredZones.value.map((z) => z.account_id)).size)
+const zonesSummary = computed(() => accounts.value.length > 0)
 
 const planCount = computed(() => {
   // 简化：本地统计与快照不一致的行数，仅作为按钮提示；准确计划由后端 diff 生成
@@ -244,35 +273,66 @@ const typeTag = (t) =>
   ({ A: 'success', AAAA: 'success', CNAME: 'warning', TXT: 'info', MX: 'danger', NS: 'warning' }[t] || 'info')
 
 onMounted(async () => {
-  const res = await listAccounts()
-  accounts.value = (res.data?.items || []).filter((a) => a.status === 1)
+  try {
+    const res = await listAccounts()
+    accounts.value = (res.data?.items || []).filter((a) => a.status === 1)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '拉取云账号列表失败')
+    return
+  }
+  await loadAllZones()
 })
 
-async function onAccountChange() {
-  zone.value = ''
-  zones.value = []
-  records.value = []
-  snapshot.value = []
-  if (!accountId.value) return
+// 并行拉取全部有权限账号的托管域名，聚合成扁平列表。
+// 单个账号失败不阻塞整体，最后统一警告。
+async function loadAllZones() {
+  if (!accounts.value.length) return
   zonesLoading.value = true
-  try {
-    const res = await listDNSZones(accountId.value)
-    zones.value = res.data || []
-    if (!zones.value.length) {
-      ElMessage.info('该账号下没有托管解析的域名（域名可能未开启云解析）')
-    }
-  } catch (e) {
-    ElMessage.error(e.response?.data?.message || '拉取托管域名失败')
-  } finally {
-    zonesLoading.value = false
+  zonesProgress.value = 0
+  const failed = []
+  const results = await Promise.all(
+    accounts.value.map((a) =>
+      listDNSZones(a.id)
+        .then((res) => ({ account: a, zones: res.data || [] }))
+        .catch(() => {
+          failed.push(a.name)
+          return { account: a, zones: [] }
+        })
+        .finally(() => { zonesProgress.value++ }),
+    ),
+  )
+  zonesAll.value = results.flatMap(({ account, zones }) =>
+    zones.map((z) => ({
+      key: `${account.id}:${z.name}`,
+      account_id: account.id,
+      account_name: account.name,
+      provider: account.provider,
+      name: z.name,
+      record_count: z.record_count,
+    })))
+  zonesLoading.value = false
+  if (failed.length) {
+    ElMessage.warning(`以下账号的托管域名拉取失败，已跳过：${failed.join('、')}（可点刷新重试）`)
+  } else if (!zonesAll.value.length) {
+    ElMessage.info('所有账号下均没有托管解析的域名（域名可能未开启云解析）')
   }
 }
 
+function onZoneChange() {
+  if (!zoneKey.value) return
+  loadRecords()
+}
+
+function onZoneClear() {
+  records.value = []
+  snapshot.value = []
+}
+
 async function loadRecords() {
-  if (!accountId.value || !zone.value) return
+  if (!selectedAccountId.value || !selectedZoneName.value) return
   recordsLoading.value = true
   try {
-    const res = await listDNSRecords(accountId.value, zone.value)
+    const res = await listDNSRecords(selectedAccountId.value, selectedZoneName.value)
     records.value = res.data || []
     snapshot.value = records.value.map((r) => ({ ...r }))
   } catch (e) {
@@ -306,7 +366,7 @@ async function saveRecord() {
   saving.value = true
   try {
     const payload = {
-      account_id: accountId.value, zone: zone.value,
+      account_id: selectedAccountId.value, zone: selectedZoneName.value,
       name: f.name, type: f.type, value: f.value,
       ttl: f.ttl, priority: f.priority, line: f.line,
     }
@@ -339,7 +399,7 @@ async function removeRecord(row) {
   }
   try {
     await deleteDNSRecord({
-      account_id: accountId.value, zone: zone.value,
+      account_id: selectedAccountId.value, zone: selectedZoneName.value,
       record_id: row.id, desc: `${row.type} ${row.name}`,
     })
     ElMessage.success('记录已删除')
@@ -354,8 +414,8 @@ async function openPlanDialog() {
   planLoading.value = true
   try {
     const res = await planDNS({
-      account_id: accountId.value,
-      zone: zone.value,
+      account_id: selectedAccountId.value,
+      zone: selectedZoneName.value,
       desired: records.value.map((r) => ({
         id: r.id || '', name: r.name, type: r.type, value: r.value,
         ttl: r.ttl || 600, priority: r.priority || 0, line: r.line || '',
@@ -373,7 +433,7 @@ async function openPlanDialog() {
 async function execPush() {
   try {
     await ElMessageBox.confirm(
-      `确认对 ${zone.value} 执行 ${planActions.value.length} 项 DNS 变更？此操作直接影响线上解析。`,
+      `确认对 ${selectedZoneName.value} 执行 ${planActions.value.length} 项 DNS 变更？此操作直接影响线上解析。`,
       '执行变更',
       { type: 'warning', confirmButtonText: '执行', cancelButtonText: '取消' },
     )
@@ -383,8 +443,8 @@ async function execPush() {
   pushing.value = true
   try {
     const res = await pushDNS({
-      account_id: accountId.value,
-      zone: zone.value,
+      account_id: selectedAccountId.value,
+      zone: selectedZoneName.value,
       actions: planActions.value,
     })
     const results = res.data || []
@@ -398,7 +458,7 @@ async function execPush() {
     await loadRecords()
     // 变更后自动留存快照，作为漂移检测的新基线
     try {
-      await captureSnapshot({ account_id: accountId.value, zone: zone.value, note: '变更执行后自动快照' })
+      await captureSnapshot({ account_id: selectedAccountId.value, zone: selectedZoneName.value, note: '变更执行后自动快照' })
     } catch { /* 快照失败不影响主流程 */ }
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '执行失败')
@@ -415,7 +475,7 @@ async function openSnapshots() {
 
 async function loadSnapshots() {
   try {
-    const res = await listSnapshots(accountId.value, zone.value)
+    const res = await listSnapshots(selectedAccountId.value, selectedZoneName.value)
     snapshots.value = res.data || []
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '拉取快照失败')
@@ -425,7 +485,7 @@ async function loadSnapshots() {
 async function captureNow() {
   snapCapturing.value = true
   try {
-    await captureSnapshot({ account_id: accountId.value, zone: zone.value, note: '手动快照' })
+    await captureSnapshot({ account_id: selectedAccountId.value, zone: selectedZoneName.value, note: '手动快照' })
     ElMessage.success('快照已保存')
     await loadSnapshots()
   } catch (e) {
@@ -459,7 +519,7 @@ async function restoreFrom(row) {
     return
   }
   try {
-    const res = await restorePlan({ account_id: accountId.value, zone: zone.value, snapshot_id: row.id })
+    const res = await restorePlan({ account_id: selectedAccountId.value, zone: selectedZoneName.value, snapshot_id: row.id })
     planActions.value = res.data || []
     snapshotDrawer.value = false
     if (!planActions.value.length) {
@@ -484,6 +544,24 @@ async function restoreFrom(row) {
 }
 .spacer {
   flex: 1;
+}
+.zones-summary {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.zone-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.zone-name {
+  font-weight: 500;
+}
+.zone-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 .record-value {
   word-break: break-all;
