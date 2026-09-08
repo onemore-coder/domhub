@@ -25,9 +25,18 @@ const (
 	apiVersion = "2018-01-29"
 )
 
+// alidns 云解析 DNS API 接入信息。
+const (
+	alidnsBaseURL = "https://alidns.aliyuncs.com"
+	alidnsVersion = "2015-01-09"
+)
+
 func init() {
 	provider.Register("aliyun", func(cred provider.Credential) (provider.DomainProvider, error) {
 		return &Provider{cred: cred, client: &http.Client{Timeout: 30 * time.Second}}, nil
+	})
+	provider.RegisterDNS("aliyun", func(cred provider.Credential) (provider.DNSProvider, error) {
+		return &dnsProvider{Provider: &Provider{cred: cred, client: &http.Client{Timeout: 30 * time.Second}}}, nil
 	})
 }
 
@@ -77,11 +86,16 @@ func nonce() string {
 	return hex.EncodeToString(b)
 }
 
-// call 调用阿里云 RPC API。
+// call 调用阿里云 RPC API（域名服务端点）。
 func (p *Provider) call(ctx context.Context, action string, extra map[string]string) (map[string]json.RawMessage, error) {
+	return p.callAPI(ctx, apiBaseURL, apiVersion, action, extra)
+}
+
+// callAPI 调用阿里云 RPC API，指定端点与版本。
+func (p *Provider) callAPI(ctx context.Context, baseURL, version, action string, extra map[string]string) (map[string]json.RawMessage, error) {
 	params := url.Values{}
 	params.Set("Format", "JSON")
-	params.Set("Version", apiVersion)
+	params.Set("Version", version)
 	params.Set("AccessKeyId", p.cred.AccessKey)
 	params.Set("SignatureMethod", "HMAC-SHA1")
 	params.Set("SignatureVersion", "1.0")
@@ -93,7 +107,7 @@ func (p *Provider) call(ctx context.Context, action string, extra map[string]str
 	}
 	params.Set("Signature", sign(p.cred.SecretKey, params))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiBaseURL+"?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

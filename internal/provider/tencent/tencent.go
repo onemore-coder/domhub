@@ -1,4 +1,4 @@
-// Package tencent 腾讯云 Provider：直调域名 API（TC3-HMAC-SHA256 签名），避免引入超大 SDK。
+// Package tencent 腾讯云 Provider：直调 API（TC3-HMAC-SHA256 签名），避免引入超大 SDK。
 package tencent
 
 import (
@@ -16,20 +16,22 @@ import (
 	"github.com/domhub-io/domhub/internal/provider"
 )
 
-const (
-	host       = "domain.tencentcloudapi.com"
-	service    = "domain"
-	version    = "2018-08-08"
-	apiBaseURL = "https://domain.tencentcloudapi.com"
-)
+var cst *time.Location
 
 func init() {
+	cst, _ = time.LoadLocation("Asia/Shanghai")
+	if cst == nil {
+		cst = time.FixedZone("CST", 8*3600)
+	}
 	provider.Register("tencent", func(cred provider.Credential) (provider.DomainProvider, error) {
 		return &Provider{cred: cred, client: &http.Client{Timeout: 30 * time.Second}}, nil
 	})
+	provider.RegisterDNS("tencent", func(cred provider.Credential) (provider.DNSProvider, error) {
+		return &dnsProvider{Provider: &Provider{cred: cred, client: &http.Client{Timeout: 30 * time.Second}}}, nil
+	})
 }
 
-// Provider 腾讯云域名 Provider。
+// Provider 腾讯云 Provider（域名注册 + DNSPod 解析）。
 type Provider struct {
 	cred   provider.Credential
 	client *http.Client
@@ -48,8 +50,20 @@ func tc3Sign(secret, date, svc, stringToSign string) string {
 	return hex.EncodeToString(h(kSigning, []byte(stringToSign)))
 }
 
+// apiTarget 一个腾讯云 API 产品的接入信息。
+type apiTarget struct {
+	host    string
+	service string
+	version string
+}
+
+var (
+	targetDomain = apiTarget{host: "domain.tencentcloudapi.com", service: "domain", version: "2018-08-08"}
+	targetDNSPod = apiTarget{host: "dnspod.tencentcloudapi.com", service: "dnspod", version: "2021-03-23"}
+)
+
 // call 调用腾讯云 API，返回 Response 内除 Error/RequestId 外的字段。
-func (p *Provider) call(ctx context.Context, action string, params map[string]any) (map[string]json.RawMessage, error) {
+func (p *Provider) call(ctx context.Context, t apiTarget, action string, params map[string]any) (map[string]json.RawMessage, error) {
 	payload, _ := json.Marshal(params)
 	ts := time.Now().UTC()
 	timestamp := fmt.Sprintf("%d", ts.Unix())
@@ -57,23 +71,23 @@ func (p *Provider) call(ctx context.Context, action string, params map[string]an
 
 	hashedPayload := sha256.Sum256(payload)
 	canonicalRequest := fmt.Sprintf("POST\n/\n\ncontent-type:application/json; charset=utf-8\nhost:%s\n\ncontent-type;host\n%s",
-		host, hex.EncodeToString(hashedPayload[:]))
+		t.host, hex.EncodeToString(hashedPayload[:]))
 
 	stringToSign := fmt.Sprintf("TC3-HMAC-SHA256\n%s\n%s/%s/tc3_request\n%s",
-		timestamp, date, service, sha256Hex([]byte(canonicalRequest)))
-	signature := tc3Sign(p.cred.SecretKey, date, service, stringToSign)
+		timestamp, date, t.service, sha256Hex([]byte(canonicalRequest)))
+	signature := tc3Sign(p.cred.SecretKey, date, t.service, stringToSign)
 
 	auth := fmt.Sprintf("TC3-HMAC-SHA256 Credential=%s/%s/%s/tc3_request, SignedHeaders=content-type;host, Signature=%s",
-		p.cred.AccessKey, date, service, signature)
+		p.cred.AccessKey, date, t.service, signature)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBaseURL, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+t.host, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Host", host)
+	req.Header.Set("Host", t.host)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("X-TC-Action", action)
-	req.Header.Set("X-TC-Version", version)
+	req.Header.Set("X-TC-Version", t.version)
 	req.Header.Set("X-TC-Timestamp", timestamp)
 	req.Header.Set("Authorization", auth)
 
@@ -93,11 +107,9 @@ func (p *Provider) call(ctx context.Context, action string, params map[string]an
 				Code    string `json:"Code"`
 				Message string `json:"Message"`
 			} `json:"Error,omitempty"`
-			RequestID string          `json:"RequestId"`
-			Fields    map[string]json.RawMessage `json:"-"`
+			RequestID string `json:"RequestId"`
 		} `json:"Response"`
 	}
-	// Response 内字段动态，先解通用部分再解全量
 	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w, body=%s", err, truncate(body))
 	}
@@ -132,18 +144,6 @@ func truncate(b []byte) string {
 		return string(b[:200]) + "..."
 	}
 	return string(b)
-}
-
-var cst *time.Location
-
-func init() {
-	cst, _ = time.LoadLocation("Asia/Shanghai")
-	if cst == nil {
-		cst = time.FixedZone("CST", 8*3600)
-	}
-	provider.Register("tencent", func(cred provider.Credential) (provider.DomainProvider, error) {
-		return &Provider{cred: cred, client: &http.Client{Timeout: 30 * time.Second}}, nil
-	})
 }
 
 // parseCST 解析 "2006-01-02 15:04:05" 格式的北京时间。

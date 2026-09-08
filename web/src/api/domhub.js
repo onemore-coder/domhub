@@ -23,3 +23,15 @@ export const updateRule = (id, data) => http.put(`/alert-rules/${id}`, data)
 export const deleteRule = (id) => http.delete(`/alert-rules/${id}`)
 export const runAlertCheck = () => http.post('/alerts/check')
 export const listAlertLogs = (limit = 50) => http.get('/alerts/logs', { params: { limit } })
+
+// DNS 解析管理
+export const listDNSZones = (accountId) => http.get('/dns/zones', { params: { account_id: accountId } })
+export const listDNSRecords = (accountId, zone) => http.get('/dns/records', { params: { account_id: accountId, zone } })
+export const createDNSRecord = (data) => http.post('/dns/records', data)
+export const updateDNSRecord = (data) => http.put('/dns/records', data)
+export const deleteDNSRecord = (data) => http.delete('/dns/records', { data })
+export const planDNS = (data) => http.post('/dns/plan', data)
+export const pushDNS = (data) => http.post('/dns/push', data)
+
+// 审计日志
+export const listAuditLogs = (params) => http.get('/audit-logs', { params })

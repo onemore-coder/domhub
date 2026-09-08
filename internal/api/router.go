@@ -42,15 +42,19 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 	domainRepo := repo.NewDomainRepo(db)
 	alertRepo := repo.NewAlertRepo(db)
 	taskRepo := repo.NewSyncTaskRepo(db)
+	auditRepo := repo.NewAuditRepo(db)
 
 	dashH := handler.NewDashboardHandler(accountRepo, domainRepo)
 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
+	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo)
 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
 	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
 	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
+	dnsH := handler.NewDNSHandler(dnsSvc)
+	auditH := handler.NewAuditHandler(auditRepo)
 
 	auth := api.Group("/auth")
 	{
@@ -86,6 +90,17 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS) *gin.Engine {
 
 		protected.POST("/alerts/check", alertH.RunCheck)
 		protected.GET("/alerts/logs", alertH.ListLogs)
+
+		// M2：DNS 解析管理 + 审计
+		protected.GET("/dns/zones", dnsH.ListZones)
+		protected.GET("/dns/records", dnsH.ListRecords)
+		protected.POST("/dns/records", dnsH.CreateRecord)
+		protected.PUT("/dns/records", dnsH.UpdateRecord)
+		protected.DELETE("/dns/records", dnsH.DeleteRecord)
+		protected.POST("/dns/plan", dnsH.Plan)
+		protected.POST("/dns/push", dnsH.Push)
+
+		protected.GET("/audit-logs", auditH.List)
 	}
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）

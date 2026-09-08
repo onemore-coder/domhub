@@ -21,6 +21,13 @@ func init() {
 		}
 		return &Provider{cred: cred, region: region}, nil
 	})
+	provider.RegisterDNS("aws", func(cred provider.Credential) (provider.DNSProvider, error) {
+		region := cred.Region
+		if region == "" {
+			region = "us-east-1"
+		}
+		return &Provider{cred: cred, region: region}, nil
+	})
 }
 
 // Provider AWS 域名 Provider。

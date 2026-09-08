@@ -33,6 +33,12 @@ const routes = [
         meta: { title: '域名台账' },
       },
       {
+        path: 'dns',
+        name: 'DNS',
+        component: () => import('../views/Dns.vue'),
+        meta: { title: 'DNS 管理' },
+      },
+      {
         path: 'alerts',
         name: 'Alerts',
         component: () => import('../views/Alerts.vue'),
@@ -41,7 +47,7 @@ const routes = [
       {
         path: 'audit',
         name: 'Audit',
-        component: () => import('../views/Placeholder.vue'),
+        component: () => import('../views/Audit.vue'),
         meta: { title: '审计日志' },
       },
       {

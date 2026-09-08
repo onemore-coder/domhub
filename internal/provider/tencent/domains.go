@@ -27,7 +27,7 @@ func (p *Provider) ListDomains(ctx context.Context) ([]provider.DomainInfo, erro
 		limit  = 100
 	)
 	for {
-		fields, err := p.call(ctx, "DescribeDomainNameList", map[string]any{
+		fields, err := p.call(ctx, targetDomain, "DescribeDomainNameList", map[string]any{
 			"Offset": offset,
 			"Limit":  limit,
 		})
@@ -73,6 +73,6 @@ func (p *Provider) ListDomains(ctx context.Context) ([]provider.DomainInfo, erro
 
 // CheckConnection 连通性检测：尝试拉取 1 条域名列表。
 func (p *Provider) CheckConnection(ctx context.Context) error {
-	_, err := p.call(ctx, "DescribeDomainNameList", map[string]any{"Offset": 0, "Limit": 1})
+	_, err := p.call(ctx, targetDomain, "DescribeDomainNameList", map[string]any{"Offset": 0, "Limit": 1})
 	return err
 }
