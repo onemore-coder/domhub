@@ -19,6 +19,7 @@ const (
 	JobSyncDomains = "sync_domains" // 域名台账自动同步
 	JobDriftCheck  = "drift_check"  // DNS 漂移检测
 	JobSyncZones   = "sync_zones"   // 托管域名元数据缓存刷新
+	JobCertCheck   = "cert_check"   // SSL 证书到期检查
 )
 
 // Scheduler 定时任务调度器。
@@ -34,6 +35,7 @@ type Runners struct {
 	AccountSvc  *service.CloudAccountService
 	SnapshotSvc *service.SnapshotService
 	ZoneSvc     *service.ZoneService
+	CertSvc     *service.CertService
 }
 
 // NewScheduler 创建（不启动）调度器。
@@ -85,6 +87,16 @@ func (s *Scheduler) jobFunc(name string) func() {
 			}
 			logger.L().Info("Zone 缓存刷新完成",
 				zap.Int("accounts", accs), zap.Int("zones", zones))
+		}
+	case JobCertCheck:
+		return func() {
+			checked, alerted, err := s.runners.CertSvc.CheckDomains(nil, 0)
+			if err != nil {
+				logger.L().Error("证书检查任务失败", zap.Error(err))
+				return
+			}
+			logger.L().Info("证书检查完成",
+				zap.Int("checked", checked), zap.Int("alerts_sent", alerted))
 		}
 	}
 	return nil

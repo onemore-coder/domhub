@@ -14,6 +14,8 @@ export const syncAllDomains = () => http.post('/domains/sync')
 export const updateDomainMeta = (id, data) => http.patch(`/domains/${id}`, data)
 
 // 告警
+export const runCertCheck = (data = {}) => http.post('/certs/check', data)
+export const listCerts = () => http.get('/certs')
 export const listChannels = () => http.get('/channels')
 export const createChannel = (data) => http.post('/channels', data)
 export const updateChannel = (id, data) => http.put(`/channels/${id}`, data)

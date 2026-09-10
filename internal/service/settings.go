@@ -17,14 +17,16 @@ const (
 	KeySyncCron        = "sync_domains_cron"
 	KeyDriftCheckCron  = "drift_check_cron"
 	KeySyncZonesCron   = "sync_zones_cron"
+	KeyCertCheckCron   = "cert_check_cron"
 )
 
 // scheduleDefaults 任务默认计划（空串 = 默认禁用）。
 var scheduleDefaults = map[string]string{
-	KeyExpiryCheckCron: "0 0 9 * * *", // 每天 09:00
-	KeySyncCron:        "",            // 默认关闭
-	KeyDriftCheckCron:  "",            // 默认关闭
+	KeyExpiryCheckCron: "0 0 9 * * *",   // 每天 09:00
+	KeySyncCron:        "",              // 默认关闭
+	KeyDriftCheckCron:  "",              // 默认关闭
 	KeySyncZonesCron:   "0 0 */2 * * *", // 默认每 2 小时刷新 Zone 缓存
+	KeyCertCheckCron:   "0 0 8 * * *",   // 每天 08:00 检查证书
 }
 
 // ScheduleApplier 设置更新后热生效（由 job.Scheduler 实现）。

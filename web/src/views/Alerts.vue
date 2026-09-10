@@ -43,6 +43,13 @@
       <el-table v-loading="loading" :data="rules" stripe size="small">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="name" label="名称" min-width="140" />
+        <el-table-column label="类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.kind === 'cert_expire' ? 'warning' : 'primary'" effect="plain">
+              {{ kindLabels[row.kind] || row.kind }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="offsets" label="提前天数" width="160" />
         <el-table-column label="通知渠道" min-width="160">
           <template #default="{ row }">
@@ -60,6 +67,43 @@
           <template #default="{ row }">
             <el-button size="small" @click="openRuleDialog(row)">编辑</el-button>
             <el-button size="small" type="danger" plain @click="doDeleteRule(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-card shadow="never" class="section">
+      <template #header>
+        <div class="section-header">
+          <span>SSL 证书状态</span>
+          <el-button size="small" :loading="certChecking" @click="doCertCheck">立即检查</el-button>
+        </div>
+      </template>
+      <el-empty
+        v-if="!certs.length && !loading" description="尚未检查，点击「立即检查」探测各域名的 HTTPS 证书"
+        :image-size="60"
+      />
+      <el-table v-else v-loading="certChecking" :data="certs" stripe size="small">
+        <el-table-column prop="name" label="域名" min-width="180" />
+        <el-table-column label="证书到期" width="130">
+          <template #default="{ row }">
+            {{ row.not_after ? row.not_after.slice(0, 10) : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="剩余天数" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.ok" size="small" :type="certTagType(row.days_left)">
+              {{ row.days_left }} 天
+            </el-tag>
+            <el-tooltip v-else :content="row.error" placement="top">
+              <el-tag size="small" type="info">未检测</el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column prop="issuer" label="签发者" min-width="150" show-overflow-tooltip />
+        <el-table-column label="检查时间" width="170">
+          <template #default="{ row }">
+            <span class="cert-checked">{{ formatTime(row.checked_at) }}</span>
           </template>
         </el-table-column>
       </el-table>
@@ -113,6 +157,12 @@
         <el-form-item label="名称" required>
           <el-input v-model="ruleForm.name" placeholder="如：域名到期提醒" />
         </el-form-item>
+        <el-form-item label="类型" required>
+          <el-radio-group v-model="ruleForm.kind">
+            <el-radio value="domain_expire">域名到期</el-radio>
+            <el-radio value="cert_expire">SSL 证书到期</el-radio>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="提前天数" required>
           <el-checkbox-group v-model="ruleForm.offsetList">
             <el-checkbox :value="60">60 天</el-checkbox>
@@ -146,6 +196,7 @@ import {
   testChannel, testChannelByID,
   listRules, createRule, updateRule, deleteRule,
   runAlertCheck, listAlertLogs,
+  listCerts, runCertCheck,
 } from '../api/domhub'
 
 const channelLabels = {
@@ -156,11 +207,15 @@ const channelLabels = {
   telegram: 'Telegram',
 }
 
+const kindLabels = { domain_expire: '域名到期', cert_expire: '证书到期' }
+
 const loading = ref(false)
 const checking = ref(false)
 const channels = ref([])
 const rules = ref([])
 const logs = ref([])
+const certs = ref([])
+const certChecking = ref(false)
 
 const channelDialog = ref(false)
 const channelForm = ref({ id: 0, name: '', type: 'webhook', config: '', enabled: true })
@@ -168,7 +223,7 @@ const testingId = ref(0)
 const testingForm = ref(false)
 
 const ruleDialog = ref(false)
-const ruleForm = ref({ id: 0, name: '', offsetList: [60, 30, 7, 1], channelIdList: [], enabled: true })
+const ruleForm = ref({ id: 0, name: '', kind: 'domain_expire', offsetList: [60, 30, 7, 1], channelIdList: [], enabled: true })
 
 const configPlaceholder = computed(() => ({
   webhook: 'https://your-server.com/hook（接收 {"title","content"} JSON）',
@@ -191,12 +246,31 @@ const formatTime = (t) => (t ? new Date(t).toLocaleString('zh-CN') : '—')
 async function load() {
   loading.value = true
   try {
-    const [ch, ru, lg] = await Promise.all([listChannels(), listRules(), listAlertLogs(30)])
+    const [ch, ru, lg, cs] = await Promise.all([
+      listChannels(), listRules(), listAlertLogs(30), listCerts(),
+    ])
     channels.value = ch.data.items
     rules.value = ru.data.items
     logs.value = lg.data.items
+    certs.value = cs.data.items
   } finally {
     loading.value = false
+  }
+}
+
+const certTagType = (days) => (days <= 7 ? 'danger' : days <= 30 ? 'warning' : 'success')
+
+async function doCertCheck() {
+  certChecking.value = true
+  try {
+    const res = await runCertCheck()
+    ElMessage.success(`已检查 ${res.data.checked} 个域名，发送 ${res.data.alerts_sent} 条告警`)
+    const cs = await listCerts()
+    certs.value = cs.data.items
+  } catch {
+    // 拦截器已弹出错误提示
+  } finally {
+    certChecking.value = false
   }
 }
 
@@ -271,12 +345,13 @@ function openRuleDialog(row) {
     ruleForm.value = {
       id: row.id,
       name: row.name,
+      kind: row.kind || 'domain_expire',
       offsetList: (row.offsets || '').split(',').map(Number).filter(Boolean),
       channelIdList: parseChannelIDs(row.channel_ids),
       enabled: row.enabled,
     }
   } else {
-    ruleForm.value = { id: 0, name: '', offsetList: [60, 30, 7, 1], channelIdList: [], enabled: true }
+    ruleForm.value = { id: 0, name: '', kind: 'domain_expire', offsetList: [60, 30, 7, 1], channelIdList: [], enabled: true }
   }
   ruleDialog.value = true
 }
@@ -290,7 +365,7 @@ async function saveRule() {
   const payload = {
     id: f.id,
     name: f.name,
-    kind: 'domain_expire',
+    kind: f.kind || 'domain_expire',
     offsets: [...f.offsetList].sort((a, b) => b - a).join(','),
     channel_ids: JSON.stringify(f.channelIdList),
     enabled: f.enabled,
@@ -346,5 +421,9 @@ onMounted(load)
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+.cert-checked {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>
