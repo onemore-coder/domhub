@@ -58,6 +58,12 @@ const routes = [
         meta: { title: '告警中心' },
       },
       {
+        path: 'tokens',
+        name: 'Tokens',
+        component: () => import('../views/Tokens.vue'),
+        meta: { title: 'API Token' },
+      },
+      {
         path: 'audit',
         name: 'Audit',
         component: () => import('../views/Audit.vue'),

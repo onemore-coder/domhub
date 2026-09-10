@@ -32,6 +32,10 @@
           <el-icon><Connection /></el-icon>
           <span>DNS 管理</span>
         </el-menu-item>
+        <el-menu-item index="/tokens">
+          <el-icon><Key /></el-icon>
+          <span>API Token</span>
+        </el-menu-item>
         <el-menu-item v-if="isAdmin" index="/audit">
           <el-icon><Document /></el-icon>
           <span>审计日志</span>

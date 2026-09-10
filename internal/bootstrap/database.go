@@ -53,6 +53,7 @@ func InitDB(cfg *config.Config) *gorm.DB {
 		&model.SystemSetting{},
 		&model.UserZone{},
 		&model.Zone{},
+		&model.ApiToken{},
 	); err != nil {
 		panic("数据库迁移失败: " + err.Error())
 	}

@@ -20,10 +20,17 @@ const (
 // 返回 (role, active)；active=false 表示账号被禁用。
 type RoleLookup func(userID uint) (role string, active bool)
 
+// ApiTokenLookup API Token 鉴权回调：明文 token → 用户三要素。
+type ApiTokenLookup func(token string) (userID uint, username, role string, ok bool)
+
 // JWT 校验 Bearer Token，将用户信息注入上下文。
+// 支持两种凭据：
+//   - JWT（登录会话）
+//   - API Token（dht_ 前缀，走 apiTokenLookup，供 CI/自动化脚本使用）
+//
 // lookup 非 nil 时：旧 token（无 role 声明）会回源数据库补齐角色，
 // 同时校验账号是否被禁用，禁用用户的 token 立即失效。
-func JWT(secret string, lookup RoleLookup) gin.HandlerFunc {
+func JWT(secret string, lookup RoleLookup, apiTokenLookup ApiTokenLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" {
@@ -31,6 +38,25 @@ func JWT(secret string, lookup RoleLookup) gin.HandlerFunc {
 			return
 		}
 		token := strings.TrimPrefix(auth, "Bearer ")
+
+		// API Token 路径
+		if strings.HasPrefix(token, "dht_") {
+			if apiTokenLookup == nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "API Token 未启用"})
+				return
+			}
+			uid, username, role, ok := apiTokenLookup(token)
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "API Token 无效或已过期"})
+				return
+			}
+			c.Set(CtxUserID, uid)
+			c.Set(CtxUsername, username)
+			c.Set(CtxRole, role)
+			c.Next()
+			return
+		}
+
 		claims, err := jwtx.ParseToken(token, secret)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录已失效，请重新登录"})

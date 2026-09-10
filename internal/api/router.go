@@ -56,6 +56,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	userSvc := service.NewUserService(repo.NewUserRepo(db), grantRepo, auditRepo)
 	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
 	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
+	tokenSvc := service.NewTokenService(repo.NewApiTokenRepo(db), repo.NewUserRepo(db))
 	if scheduleApplier != nil {
 		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
 	}
@@ -100,7 +101,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		}
 		return u.Role, u.Status == 1
 	}
-	protected.Use(middleware.JWT(cfg.JWT.Secret, userLookup))
+	protected.Use(middleware.JWT(cfg.JWT.Secret, userLookup, tokenSvc.Resolve))
 	{
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
@@ -148,6 +149,15 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	protected.DELETE("/dns/records", writeAccess, dnsH.DeleteRecord)
 	protected.POST("/dns/plan", dnsH.Plan)
 	protected.POST("/dns/push", writeAccess, dnsH.Push)
+
+	// M5：API Token（个人管理，dht_ 前缀凭据供 CI/自动化调用）
+	tokenH := handler.NewTokenHandler(tokenSvc)
+	tokenGroup := protected.Group("/tokens")
+	{
+		tokenGroup.GET("", tokenH.List)
+		tokenGroup.POST("", writeAccess, tokenH.Create)
+		tokenGroup.DELETE("/:id", tokenH.Revoke)
+	}
 
 	// M2：审计日志（admin 专属）
 	protected.GET("/audit-logs", adminOnly, auditH.List)

@@ -46,6 +46,11 @@ export const restorePlan = (data) => http.post('/dns/snapshots/restore-plan', da
 export const getSettings = () => http.get('/settings')
 export const updateSchedules = (specs) => http.put('/settings/schedules', specs)
 
+// API Token（个人管理）
+export const listTokens = () => http.get('/tokens')
+export const createToken = (data) => http.post('/tokens', data)
+export const revokeToken = (id) => http.delete(`/tokens/${id}`)
+
 // 审计日志
 export const listAuditLogs = (params) => http.get('/audit-logs', { params })
 
