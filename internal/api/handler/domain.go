@@ -12,8 +12,8 @@ import (
 
 // DomainHandler 域名台账接口。
 type DomainHandler struct {
-	domains     *repo.DomainRepo
-	accountSvc  *service.CloudAccountService
+	domains    *repo.DomainRepo
+	accountSvc *service.CloudAccountService
 }
 
 func NewDomainHandler(domains *repo.DomainRepo, accountSvc *service.CloudAccountService) *DomainHandler {
@@ -60,7 +60,7 @@ func (h *DomainHandler) UpdateMeta(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Tags   *string `json:"tags"`   // 逗号分隔；传空串清空
+		Tags   *string `json:"tags"` // 逗号分隔；传空串清空
 		Remark *string `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {

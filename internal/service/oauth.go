@@ -42,7 +42,9 @@ func NewOAuthService(conf GitHubOAuthConf, users *repo.UserRepo, db *gorm.DB, jw
 }
 
 // Enabled 是否启用。
-func (s *OAuthService) Enabled() bool { return s.conf.Enabled && s.conf.ClientID != "" && s.conf.ClientSecret != "" }
+func (s *OAuthService) Enabled() bool {
+	return s.conf.Enabled && s.conf.ClientID != "" && s.conf.ClientSecret != ""
+}
 
 // AuthURL 生成 GitHub 授权跳转地址（state 防 CSRF）。
 func (s *OAuthService) AuthURL(redirectBase string) (string, string, error) {

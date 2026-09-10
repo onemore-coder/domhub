@@ -153,10 +153,10 @@ func (p *Provider) ListRecords(ctx context.Context, zone string) ([]provider.Rec
 			name := relativeName(strings.TrimSuffix(*r.Name, "."), strings.TrimSuffix(fqdn, "."))
 			if r.AliasTarget != nil {
 				out = append(out, provider.RecordInfo{
-					Name:  name,
-					Type:  string(r.Type),
-					Value: "<alias → " + *r.AliasTarget.DNSName + ">",
-					ID:    "",
+					Name:   name,
+					Type:   string(r.Type),
+					Value:  "<alias → " + *r.AliasTarget.DNSName + ">",
+					ID:     "",
 					Status: "alias",
 				})
 				continue

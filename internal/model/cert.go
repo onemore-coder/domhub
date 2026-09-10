@@ -5,12 +5,12 @@ import "time"
 // CertStatus 主机名级 TLS 证书状态（每次检查覆盖更新）。
 // 监控对象包含注册域 apex 与从解析记录/快照发现的子域名。
 type CertStatus struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`
-	Host     string `gorm:"size:255;not null;uniqueIndex" json:"host"` // 监控的完整主机名
-	DomainID uint   `gorm:"index" json:"domain_id"`                    // 关联的主域 ID（0=手动添加）
-	DomainName string `gorm:"size:255" json:"domain_name"`             // 所属主域（展示用）
-	Source   string `gorm:"size:16;not null;default:auto" json:"source"` // auto 自动发现 | manual 手动添加
-	Excluded bool   `gorm:"not null;default:false" json:"excluded"`    // 排除后不探测不告警
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	Host       string `gorm:"size:255;not null;uniqueIndex" json:"host"`   // 监控的完整主机名
+	DomainID   uint   `gorm:"index" json:"domain_id"`                      // 关联的主域 ID（0=手动添加）
+	DomainName string `gorm:"size:255" json:"domain_name"`                 // 所属主域（展示用）
+	Source     string `gorm:"size:16;not null;default:auto" json:"source"` // auto 自动发现 | manual 手动添加
+	Excluded   bool   `gorm:"not null;default:false" json:"excluded"`      // 排除后不探测不告警
 
 	NotAfter *time.Time `json:"not_after"` // 证书到期时间
 	Issuer   string     `gorm:"size:255" json:"issuer"`

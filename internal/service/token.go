@@ -55,10 +55,10 @@ func (s *TokenService) Create(in CreateInput) (*CreateResult, error) {
 	sum := sha256.Sum256([]byte(plain))
 
 	t := &model.ApiToken{
-		UserID: in.UserID,
-		Name:   in.Name,
+		UserID:    in.UserID,
+		Name:      in.Name,
 		TokenHash: hex.EncodeToString(sum[:]),
-		Prefix: plain[:len(model.ApiTokenPrefix)+8],
+		Prefix:    plain[:len(model.ApiTokenPrefix)+8],
 	}
 	if in.ExpireDays > 0 {
 		exp := time.Now().AddDate(0, 0, in.ExpireDays)

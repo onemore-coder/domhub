@@ -12,8 +12,8 @@ type Domain struct {
 	Registrar      string     `gorm:"size:128" json:"registrar"`
 	Status         string     `gorm:"size:64" json:"status"`
 	RegisteredAt   *time.Time `json:"registered_at"`
-	ExpireAt       *time.Time `json:"expire_at"` // 空 = 未知（如托管 Zone）
-	Tags           string     `gorm:"size:255" json:"tags"`      // 逗号分隔
+	ExpireAt       *time.Time `json:"expire_at"`            // 空 = 未知（如托管 Zone）
+	Tags           string     `gorm:"size:255" json:"tags"` // 逗号分隔
 	Remark         string     `gorm:"size:255" json:"remark"`
 	LastSyncedAt   time.Time  `json:"last_synced_at"`
 	CreatedAt      time.Time  `json:"created_at"`

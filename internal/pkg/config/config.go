@@ -34,8 +34,8 @@ type Config struct {
 	} `mapstructure:"admin"`
 	OAuth struct {
 		GitHub struct {
-			Enabled    bool   `mapstructure:"enabled"`
-			ClientID   string `mapstructure:"client_id"`
+			Enabled      bool   `mapstructure:"enabled"`
+			ClientID     string `mapstructure:"client_id"`
 			ClientSecret string `mapstructure:"client_secret"`
 		} `mapstructure:"github"`
 	} `mapstructure:"oauth"`

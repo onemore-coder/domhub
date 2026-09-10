@@ -10,13 +10,13 @@ import (
 
 // ZoneView 缓存 Zone + 归属账号信息（join 查询结果）。
 type ZoneView struct {
-	ZoneID        uint      `json:"id"`
-	CloudAccountID uint     `json:"cloud_account_id"`
-	AccountName   string    `json:"account_name"`
-	Provider      string    `json:"provider"`
-	Name          string    `json:"name"`
-	RecordCount   int       `json:"record_count"`
-	SyncedAt      time.Time `json:"synced_at"`
+	ZoneID         uint      `json:"id"`
+	CloudAccountID uint      `json:"cloud_account_id"`
+	AccountName    string    `json:"account_name"`
+	Provider       string    `json:"provider"`
+	Name           string    `json:"name"`
+	RecordCount    int       `json:"record_count"`
+	SyncedAt       time.Time `json:"synced_at"`
 }
 
 // ZoneRepo Zone 元数据缓存仓库。
@@ -52,7 +52,7 @@ func (r *ZoneRepo) UpsertBatch(accountID uint, zones []model.Zone, batchStart ti
 func (r *ZoneRepo) ListViews() ([]ZoneView, error) {
 	var out []ZoneView
 	err := r.db.Table("zones").
-		Select("zones.id AS zone_id, zones.cloud_account_id, cloud_accounts.name AS account_name, "+
+		Select("zones.id AS zone_id, zones.cloud_account_id, cloud_accounts.name AS account_name, " +
 			"cloud_accounts.provider, zones.name, zones.record_count, zones.synced_at").
 		Joins("JOIN cloud_accounts ON cloud_accounts.id = zones.cloud_account_id AND cloud_accounts.status = 1").
 		Order("zones.cloud_account_id, zones.name").

@@ -12,11 +12,11 @@ import (
 )
 
 var (
-	ErrUsernameTaken  = errors.New("用户名已存在")
+	ErrUsernameTaken    = errors.New("用户名已存在")
 	ErrCannotDeleteSelf = errors.New("不能删除自己的账号")
-	ErrLastAdmin      = errors.New("不能停用或降级最后一个管理员")
-	ErrInvalidRole    = errors.New("非法角色（可选 admin / operator / viewer）")
-	ErrUserNotFound   = errors.New("用户不存在")
+	ErrLastAdmin        = errors.New("不能停用或降级最后一个管理员")
+	ErrInvalidRole      = errors.New("非法角色（可选 admin / operator / viewer）")
+	ErrUserNotFound     = errors.New("用户不存在")
 )
 
 // UserService 用户管理与 Zone 授权。

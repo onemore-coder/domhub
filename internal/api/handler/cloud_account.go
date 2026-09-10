@@ -19,12 +19,12 @@ func NewCloudAccountHandler(svc *service.CloudAccountService) *CloudAccountHandl
 }
 
 type accountReq struct {
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
+	Name      string `json:"name"`
+	Provider  string `json:"provider"`
 	AccessKey string `json:"access_key"`
 	SecretKey string `json:"secret_key"`
-	Region   string `json:"region"`
-	Status   *int   `json:"status"`
+	Region    string `json:"region"`
+	Status    *int   `json:"status"`
 }
 
 // Create POST /api/v1/accounts

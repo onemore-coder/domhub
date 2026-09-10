@@ -91,14 +91,14 @@ func (r *DomainRepo) UpsertBatch(items []model.Domain) error {
 
 // DomainFilter 域名查询条件。
 type DomainFilter struct {
-	Keyword       string
-	Provider      string
+	Keyword        string
+	Provider       string
 	CloudAccountID uint
-	Kind          string
-	Tag           string
-	ExpiringDays  int // 只看 N 天内到期的（0 = 不过滤）
-	Page          int
-	PageSize      int
+	Kind           string
+	Tag            string
+	ExpiringDays   int // 只看 N 天内到期的（0 = 不过滤）
+	Page           int
+	PageSize       int
 }
 
 // List 按条件查询 + 分页。

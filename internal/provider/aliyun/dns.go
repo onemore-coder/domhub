@@ -75,15 +75,15 @@ func (p *Provider) ListZones(ctx context.Context) ([]provider.ZoneInfo, error) {
 // alidnsRecord 云解析记录结构。
 // 注意：阿里云返回的 RecordId 是字符串形式（"12345"），用 any 兼容数字/字符串。
 type alidnsRecord struct {
-	RecordId  any    `json:"RecordId"`
-	RR        string `json:"RR"`
-	Type      string `json:"Type"`
-	Value     string `json:"Value"`
-	TTL       int    `json:"TTL"`
-	Priority  int    `json:"Priority"`
-	Line      string `json:"Line"`
-	Status    string `json:"Status"` // ENABLE / PAUSE
-	Remark    string `json:"Remark"`
+	RecordId any    `json:"RecordId"`
+	RR       string `json:"RR"`
+	Type     string `json:"Type"`
+	Value    string `json:"Value"`
+	TTL      int    `json:"TTL"`
+	Priority int    `json:"Priority"`
+	Line     string `json:"Line"`
+	Status   string `json:"Status"` // ENABLE / PAUSE
+	Remark   string `json:"Remark"`
 }
 
 // parseAliyunID 归一化阿里云的 ID 字段（可能是数字或字符串）。

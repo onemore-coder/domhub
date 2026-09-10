@@ -99,9 +99,9 @@ func (h *SnapshotHandler) Diff(c *gin.Context) {
 }
 
 type restoreReq struct {
-	AccountID uint `json:"account_id"`
-	Zone      string `json:"zone"`
-	SnapshotID uint `json:"snapshot_id"`
+	AccountID  uint   `json:"account_id"`
+	Zone       string `json:"zone"`
+	SnapshotID uint   `json:"snapshot_id"`
 }
 
 // RestorePlan POST /dns/snapshots/restore-plan —— 生成"现网 → 快照"恢复计划（不执行）。

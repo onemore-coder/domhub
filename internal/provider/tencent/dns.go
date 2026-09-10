@@ -26,10 +26,10 @@ func (p *Provider) ListZones(ctx context.Context) ([]provider.ZoneInfo, error) {
 		}
 		var resp struct {
 			DomainList []struct {
-				Name        string `json:"Name"`
+				Name         string `json:"Name"`
 				PunycodeName string `json:"PunycodeName"`
-				RecordCount int    `json:"RecordCount"`
-				Remark      string `json:"Remark"`
+				RecordCount  int    `json:"RecordCount"`
+				Remark       string `json:"Remark"`
 			} `json:"DomainList"`
 			TotalCount int `json:"TotalCount"`
 		}
