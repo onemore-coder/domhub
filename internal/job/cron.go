@@ -18,6 +18,7 @@ const (
 	JobExpiryCheck = "expiry_check" // 域名到期检查
 	JobSyncDomains = "sync_domains" // 域名台账自动同步
 	JobDriftCheck  = "drift_check"  // DNS 漂移检测
+	JobSyncZones   = "sync_zones"   // 托管域名元数据缓存刷新
 )
 
 // Scheduler 定时任务调度器。
@@ -32,6 +33,7 @@ type Runners struct {
 	AlertSvc    *service.AlertService
 	AccountSvc  *service.CloudAccountService
 	SnapshotSvc *service.SnapshotService
+	ZoneSvc     *service.ZoneService
 }
 
 // NewScheduler 创建（不启动）调度器。
@@ -73,6 +75,16 @@ func (s *Scheduler) jobFunc(name string) func() {
 			} else {
 				logger.L().Info("漂移检测完成，无偏离")
 			}
+		}
+	case JobSyncZones:
+		return func() {
+			accs, zones, err := s.runners.ZoneSvc.Refresh(0)
+			if err != nil {
+				logger.L().Error("Zone 缓存刷新任务失败", zap.Error(err))
+				return
+			}
+			logger.L().Info("Zone 缓存刷新完成",
+				zap.Int("accounts", accs), zap.Int("zones", zones))
 		}
 	}
 	return nil

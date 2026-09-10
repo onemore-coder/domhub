@@ -52,6 +52,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
 	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo, grantRepo)
+	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), grantRepo, dnsSvc)
 	userSvc := service.NewUserService(repo.NewUserRepo(db), grantRepo, auditRepo)
 	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
 	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
@@ -67,6 +68,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	userH := handler.NewUserHandler(userSvc, authSvc)
 	snapshotH := handler.NewSnapshotHandler(snapshotSvc)
 	settingsH := handler.NewSettingsHandler(settingsSvc, db)
+	zoneH := handler.NewZoneHandler(zoneSvc)
 
 	adminOnly := middleware.RequireRole(model.RoleAdmin)
 	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
@@ -137,7 +139,9 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	protected.GET("/alerts/logs", alertH.ListLogs)
 
 	// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
-	protected.GET("/dns/zones", dnsH.ListZones)
+	// zones 走本地缓存（秒开），refresh 回源厂商 API；记录操作仍实时
+	protected.GET("/dns/zones", zoneH.ListCached)
+	protected.POST("/dns/zones/refresh", writeAccess, zoneH.Refresh)
 	protected.GET("/dns/records", dnsH.ListRecords)
 	protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)
 	protected.PUT("/dns/records", writeAccess, dnsH.UpdateRecord)

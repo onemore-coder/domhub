@@ -26,7 +26,8 @@ export const runAlertCheck = () => http.post('/alerts/check')
 export const listAlertLogs = (limit = 50) => http.get('/alerts/logs', { params: { limit } })
 
 // DNS 解析管理
-export const listDNSZones = (accountId) => http.get('/dns/zones', { params: { account_id: accountId } })
+export const listDNSZones = () => http.get('/dns/zones') // 走本地缓存，秒开
+export const refreshDNSZones = (accountId = 0) => http.post('/dns/zones/refresh', { account_id: accountId })
 export const listDNSRecords = (accountId, zone) => http.get('/dns/records', { params: { account_id: accountId, zone } })
 export const createDNSRecord = (data) => http.post('/dns/records', data)
 export const updateDNSRecord = (data) => http.put('/dns/records', data)

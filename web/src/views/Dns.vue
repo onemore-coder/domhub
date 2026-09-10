@@ -10,12 +10,12 @@
           v-model="keyword" placeholder="搜索域名" style="width: 260px" clearable
           :prefix-icon="Search"
         />
-        <el-button :icon="Refresh" :loading="loading" @click="loadAllZones">刷新</el-button>
+        <el-button :icon="Refresh" :loading="refreshing" @click="doRefresh()">同步缓存</el-button>
         <div class="spacer" />
         <span v-if="!loading && zonesAll.length" class="zones-summary">
           共 {{ filteredZones.length }} 个托管域名，来自 {{ zoneAccountCount }} 个云账号
+          <template v-if="latestSyncedAt">· 缓存更新于 {{ relativeTime(latestSyncedAt) }}</template>
         </span>
-        <span v-else-if="loading" class="zones-summary">正在拉取各账号托管域名…（{{ progress }}/{{ accounts.length }}）</span>
       </div>
     </el-card>
 
@@ -35,6 +35,11 @@
           </template>
         </el-table-column>
         <el-table-column label="解析记录" prop="record_count" width="100" align="center" />
+        <el-table-column label="缓存时间" width="170">
+          <template #default="{ row }">
+            <span class="synced-at">{{ formatTime(row.synced_at) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click.stop="goRecords(row)">解析</el-button>
@@ -44,7 +49,7 @@
         <template #empty>
           <el-empty
             :description="accounts.length
-              ? (keyword || accountFilter ? '没有匹配的托管域名' : '所有账号下均没有托管解析的域名（域名可能未开启云解析）')
+              ? (keyword || accountFilter ? '没有匹配的托管域名' : '暂无缓存数据，点击「同步缓存」从云厂商拉取')
               : '请先在「云账号」页接入云账号'"
           />
         </template>
@@ -55,30 +60,33 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
-import { listAccounts, listDNSZones } from '../api/domhub'
+import { listAccounts, listDNSZones, refreshDNSZones } from '../api/domhub'
 
+const route = useRoute()
 const router = useRouter()
 
 const accounts = ref([])
 const accountFilter = ref(0) // 0 = 全部账号
 const keyword = ref('')
-const zonesAll = ref([]) // 聚合后的扁平 Zone 列表：{ account_id, account_name, provider, name, record_count }
+const zonesAll = ref([]) // 缓存视图：{ id, cloud_account_id, account_name, provider, name, record_count, synced_at }
 const loading = ref(false)
-const progress = ref(0)
+const refreshing = ref(false)
 
 const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS' }[p] || p)
 
 const filteredZones = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   return zonesAll.value
-    .filter((z) => !accountFilter.value || z.account_id === accountFilter.value)
+    .filter((z) => !accountFilter.value || z.cloud_account_id === accountFilter.value)
     .filter((z) => !kw || z.name.toLowerCase().includes(kw))
 })
 
-const zoneAccountCount = computed(() => new Set(filteredZones.value.map((z) => z.account_id)).size)
+const zoneAccountCount = computed(() => new Set(filteredZones.value.map((z) => z.cloud_account_id)).size)
+const latestSyncedAt = computed(() =>
+  filteredZones.value.reduce((acc, z) => (z.synced_at > acc ? z.synced_at : acc), ''))
 
 onMounted(async () => {
   try {
@@ -86,45 +94,64 @@ onMounted(async () => {
     accounts.value = (res.data?.items || []).filter((a) => a.status === 1)
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '拉取云账号列表失败')
-    return
   }
-  await loadAllZones()
+  await loadCachedZones()
+  // 从详情页改完记录跳回时，静默刷新该账号的记录数
+  if (route.query.refresh_account) {
+    doRefresh(Number(route.query.refresh_account), true)
+  }
 })
 
-// 并行拉取全部有权限账号的托管域名，聚合成扁平列表。
-// 单个账号失败不阻塞整体，最后统一警告。
-async function loadAllZones() {
-  if (!accounts.value.length) return
+// 读取本地缓存（不发厂商 API 请求，秒开）
+async function loadCachedZones() {
   loading.value = true
-  progress.value = 0
-  const failed = []
-  const results = await Promise.all(
-    accounts.value.map((a) =>
-      listDNSZones(a.id)
-        .then((res) => ({ account: a, zones: res.data || [] }))
-        .catch(() => {
-          failed.push(a.name)
-          return { account: a, zones: [] }
-        })
-        .finally(() => { progress.value++ }),
-    ),
-  )
-  zonesAll.value = results.flatMap(({ account, zones }) =>
-    zones.map((z) => ({
-      account_id: account.id,
-      account_name: account.name,
-      provider: account.provider,
-      name: z.name,
-      record_count: z.record_count,
-    })))
-  loading.value = false
-  if (failed.length) {
-    ElMessage.warning(`以下账号的托管域名拉取失败，已跳过：${failed.join('、')}（可点刷新重试）`)
+  try {
+    const res = await listDNSZones()
+    zonesAll.value = res.data || []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '拉取托管域名缓存失败')
+  } finally {
+    loading.value = false
   }
 }
 
+// 同步缓存：回源各厂商 API（后端串行限流），完成后重载列表。
+// accountID=0 刷新全部；silent 用于返回页面时的静默单账号刷新。
+async function doRefresh(accountID = 0, silent = false) {
+  refreshing.value = true
+  try {
+    const res = await refreshDNSZones(accountID)
+    const { accounts: accs, zones } = res.data || {}
+    if (!silent) {
+      ElMessage.success(`已同步 ${accs || 0} 个账号、${zones || 0} 个托管域名`)
+    }
+    await loadCachedZones()
+  } catch (e) {
+    if (!silent) {
+      ElMessage.error(e.response?.data?.message || '同步缓存失败')
+    }
+    await loadCachedZones()
+  } finally {
+    refreshing.value = false
+  }
+}
+
+function formatTime(t) {
+  if (!t) return '—'
+  return t.replace('T', ' ').slice(0, 19)
+}
+
+function relativeTime(t) {
+  if (!t) return ''
+  const diff = (Date.now() - new Date(t).getTime()) / 1000
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
+  return `${Math.floor(diff / 86400)} 天前`
+}
+
 function goRecords(row, withSnapshot) {
-  const query = { account_id: row.account_id, zone: row.name }
+  const query = { account_id: row.cloud_account_id, zone: row.name }
   if (withSnapshot) query.snapshot = '1'
   router.push({ path: '/dns/records', query })
 }
@@ -143,6 +170,10 @@ function goRecords(row, withSnapshot) {
   flex: 1;
 }
 .zones-summary {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.synced-at {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
