@@ -20,18 +20,26 @@
           <el-icon><Cloudy /></el-icon>
           <span>云账号</span>
         </el-menu-item>
-        <el-menu-item index="/domains">
-          <el-icon><Collection /></el-icon>
-          <span>域名台账</span>
-        </el-menu-item>
+        <el-sub-menu index="domain-group">
+          <template #title>
+            <el-icon><Collection /></el-icon>
+            <span>域名管理</span>
+          </template>
+          <el-menu-item index="/domains">域名台账</el-menu-item>
+          <el-menu-item index="/dns">DNS 管理</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/alerts">
           <el-icon><Bell /></el-icon>
           <span>告警中心</span>
         </el-menu-item>
-        <el-menu-item index="/dns">
-          <el-icon><Connection /></el-icon>
-          <span>DNS 管理</span>
-        </el-menu-item>
+        <el-sub-menu index="cert-group">
+          <template #title>
+            <el-icon><Lock /></el-icon>
+            <span>证书管理</span>
+          </template>
+          <el-menu-item index="/certs">证书监控</el-menu-item>
+          <el-menu-item index="/certs/apply">证书申请</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/tokens">
           <el-icon><Key /></el-icon>
           <span>API Token</span>

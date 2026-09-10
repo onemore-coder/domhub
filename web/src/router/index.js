@@ -58,6 +58,18 @@ const routes = [
         meta: { title: '告警中心' },
       },
       {
+        path: 'certs',
+        name: 'Certs',
+        component: () => import('../views/Certs.vue'),
+        meta: { title: '证书监控' },
+      },
+      {
+        path: 'certs/apply',
+        name: 'CertApply',
+        component: () => import('../views/CertApply.vue'),
+        meta: { title: '证书申请' },
+      },
+      {
         path: 'tokens',
         name: 'Tokens',
         component: () => import('../views/Tokens.vue'),
