@@ -1,62 +1,88 @@
 # DomHub
 
-> 多云域名与 DNS 统一管理平台（开发中 · M0 骨架阶段）
+> 多云域名与 DNS 统一管理平台
 
-把散落在腾讯云、阿里云、AWS 等多个云厂商、多个账号下的域名和 DNS 解析，收拢到一个控制台里统一管理。
+把散落在腾讯云、阿里云、AWS 等多个云厂商、多个账号下的域名资产和 DNS 解析，收拢到一个控制台里统一管理。单二进制部署，开箱即用。
+
+## 功能特性
+
+- **多云账号接入**：腾讯云 / 阿里云 / AWS，凭证 AES-256-GCM 加密存储，列表脱敏展示
+- **域名台账**：多账号域名统一视图、自动同步、Tags 管理、到期告警（多档提前天数）
+- **DNS 解析管理**：跨账号聚合的 Zone 列表（本地缓存秒开）、解析记录增删改、**变更预览 → 确认执行**（diff/plan/push，DNSControl 风格）
+- **快照与漂移检测**：解析记录定时快照、任意两份快照比较、一键生成恢复计划、定时漂移检测告警
+- **告警中心**：到期 / 漂移告警，钉钉机器人 / 企业微信 / 邮件 / Webhook / Telegram 渠道，支持测试发送
+- **RBAC 权限**：admin / operator / viewer 三角色，可按「账号 + Zone」粒度授权
+- **API Token**：`dht_` 前缀令牌，方便接入 CI / 自动化脚本
+- **审计日志**：所有 DNS 变更操作留痕（操作人 / 动作 / 内容）
+- **系统设置**：定时任务 cron 表达式页面修改、热生效
 
 ## 技术栈
 
 - **后端**：Go + Gin + GORM + MySQL（开发模式支持 SQLite）
 - **前端**：Vue 3 + Element Plus + Vite + Pinia
-- **部署**：单二进制（内嵌前端）/ Docker Compose
+- **部署**：单二进制（`go:embed` 内嵌前端）/ Docker Compose
 
-## 功能规划（Roadmap）
+## 快速开始
 
-| 里程碑 | 内容 | 状态 |
-|---|---|---|
-| M0 | 项目骨架、登录认证（JWT）、CI、部署配置 | ✅ 进行中 |
-| M1 | 云账号接入、域名台账同步、到期告警 | 🚧 |
-| M2 | DNS 解析管理（preview → push）、审计日志 | |
-| M3 | RBAC、批量操作、通知渠道 | |
-| M4 | 文档完善、v1.0 正式发布 | |
-
-## 本地开发
-
-### 后端
+### Docker Compose（推荐）
 
 ```bash
-# 默认使用 SQLite（domhub.db），无需 MySQL
-go run ./cmd/server
-# 服务监听 http://localhost:8080
-# 默认账号 admin / admin123（可由 config.yaml 或环境变量覆盖）
-```
-
-生产配置：`cp config.example.yaml config.yaml` 后修改，或使用 `DOMHUB_*` 环境变量。
-
-### 前端
-
-```bash
-cd web
-npm install
-npm run dev        # 开发模式 http://localhost:5173，API 代理到 8080
-npm run build      # 构建产物输出到 web/dist（后端构建时会内嵌）
-```
-
-### Docker Compose 一键部署
-
-```bash
+git clone https://github.com/domhub-io/domhub.git
+cd domhub
+cp config.example.yaml config.yaml   # 修改数据库与 JWT 密钥
 docker compose up -d
 # 访问 http://localhost:8080
 ```
 
-## API 概要
+### 源码构建
 
+```bash
+# 构建前端（产物内嵌进二进制）
+cd web && npm install && npm run build && cd ..
+
+# 构建后端单二进制
+go build -o domhub ./cmd/server
+
+# 默认使用 SQLite（domhub.db），无需 MySQL
+./domhub
+# 服务监听 http://localhost:8080
 ```
-POST /api/v1/auth/login          登录（返回 JWT）
-GET  /api/v1/auth/me             当前用户信息
-POST /api/v1/auth/logout         登出
-GET  /api/v1/dashboard/summary   仪表盘统计
+
+默认账号 `admin / admin123`，登录后请立即修改。
+
+> **安全提示**：`config.yaml` 中的 `crypto.key` 用于加密云凭证，一旦确定就不要更换，否则已存储的凭证将无法解密。
+
+### 本地开发
+
+```bash
+# 后端（默认 SQLite）
+go run ./cmd/server
+
+# 前端热更新模式 http://localhost:5173，API 代理到 8080
+cd web && npm install && npm run dev
 ```
+
+### 使用 API Token
+
+在「访问令牌」页签发 Token 后：
+
+```bash
+curl -H "Authorization: Bearer dht_xxxxxxxxxxxx" \
+  http://localhost:8080/api/v1/domains
+```
+
+## Roadmap
+
+| 里程碑 | 内容 | 状态 |
+|---|---|---|
+| M0 | 项目骨架、JWT 登录、CI / 部署配置 | ✅ |
+| M1 | 云账号接入、域名台账、到期告警 | ✅ |
+| M2 | DNS 解析管理（preview → push）、审计日志 | ✅ |
+| M3 | RBAC、Zone 级授权 | ✅ |
+| M4 | 解析快照、漂移检测、Tags、系统设置、OAuth | ✅ |
+| M5 | Zone 缓存、API Token、渠道测试发送、体验优化 | ✅ |
+| M6 | SSL 证书监控 | 🚧 |
+| 之后 | 域名 ↔ Zone 关联视图、批量操作模板、分组授权、跨厂商迁移、2FA | |
 
 ## 项目结构
 
@@ -64,17 +90,22 @@ GET  /api/v1/dashboard/summary   仪表盘统计
 domhub/
 ├── cmd/server/          # 入口
 ├── internal/
-│   ├── api/             # 路由 / handler / middleware / dto
+│   ├── api/             # 路由 / handler / middleware
 │   ├── bootstrap/       # 数据库初始化与种子数据
+│   ├── job/             # 定时任务调度
 │   ├── model/           # GORM 模型
+│   ├── provider/        # 腾讯云 / 阿里云 / AWS 抽象与实现
 │   ├── repo/            # 数据访问层
 │   ├── service/         # 业务逻辑层
-│   └── pkg/             # config / logger / jwtx
+│   └── pkg/             # config / logger / cryptox / notify
 ├── web/                 # Vue3 + Element Plus 前端
-├── deploy/              # 部署脚本（预留）
-└── .github/workflows/   # CI（构建 / 测试 / 发版）
+└── .github/workflows/   # CI（构建 / 测试 / tag 发版镜像）
 ```
+
+## 参与贡献
+
+欢迎 Issue 和 PR，见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)
