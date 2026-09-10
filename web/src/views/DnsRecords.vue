@@ -2,7 +2,7 @@
   <div class="dns-records-page">
     <el-card shadow="never" class="toolbar-card">
       <div class="toolbar">
-        <el-button :icon="Back" @click="$router.push('/dns')">返回列表</el-button>
+        <el-button :icon="Back" @click="goBack">返回列表</el-button>
         <span class="zone-title">{{ zoneName }}</span>
         <el-tag v-if="accountName" size="small" effect="plain" type="info">
           {{ accountName }} · {{ providerLabel(provider) }}
@@ -18,14 +18,24 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table :data="records" v-loading="recordsLoading" stripe>
-        <el-table-column label="主机记录" prop="name" width="140">
+      <div class="record-filters">
+        <el-input
+          v-model="nameFilter" placeholder="筛选主机记录" style="width: 200px" clearable
+          :prefix-icon="Search" size="small"
+        />
+        <el-select v-model="typeFilter" placeholder="全部类型" style="width: 130px" size="small" clearable>
+          <el-option v-for="t in recordTypes" :key="t" :value="t" :label="t" />
+        </el-select>
+        <span class="filter-count">共 {{ filteredRecords.length }} 条记录</span>
+      </div>
+      <el-table :data="filteredRecords" v-loading="recordsLoading" stripe>
+        <el-table-column label="主机记录" prop="name" width="150" sortable>
           <template #default="{ row }">
             <el-tag v-if="row.name === '@'" size="small" type="info">@</el-tag>
             <span v-else>{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="类型" prop="type" width="90">
+        <el-table-column label="类型" prop="type" width="100" sortable>
           <template #default="{ row }">
             <el-tag size="small" :type="typeTag(row.type)">{{ row.type }}</el-tag>
           </template>
@@ -35,7 +45,7 @@
             <span class="record-value">{{ row.value }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="TTL" prop="ttl" width="90" />
+        <el-table-column label="TTL" prop="ttl" width="90" sortable />
         <el-table-column label="线路" prop="line" width="90" />
         <el-table-column label="优先级" prop="priority" width="80">
           <template #default="{ row }">{{ row.priority || '—' }}</template>
@@ -186,7 +196,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Back, Plus, Refresh } from '@element-plus/icons-vue'
+import { Back, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import {
   listAccounts, listDNSRecords,
   createDNSRecord, updateDNSRecord, deleteDNSRecord,
@@ -195,6 +206,7 @@ import {
 } from '../api/domhub'
 
 const route = useRoute()
+const router = useRouter()
 
 // Zone 上下文来自路由：/dns/records?account_id=1&zone=example.com[&snapshot=1]
 const accountId = ref(Number(route.query.account_id) || 0)
@@ -206,6 +218,15 @@ const provider = ref('')
 const recordsLoading = ref(false)
 const records = ref([])
 const snapshot = ref([]) // 现网快照，用于本地变更计数
+
+const nameFilter = ref('')
+const typeFilter = ref('')
+const filteredRecords = computed(() => {
+  const kw = nameFilter.value.trim().toLowerCase()
+  return records.value
+    .filter((r) => !kw || r.name.toLowerCase().includes(kw))
+    .filter((r) => !typeFilter.value || r.type === typeFilter.value)
+})
 
 const dialogVisible = ref(false)
 const editing = ref(false)
@@ -324,11 +345,22 @@ async function saveRecord() {
 
 async function removeRecord(row) {
   try {
-    await ElMessageBox.confirm(
-      `确认删除记录 ${row.type} ${row.name} → ${row.value.slice(0, 50)}？此操作立即生效且不可撤销。`,
-      '删除解析记录',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
-    )
+    if (row.type === 'NS') {
+      // NS 记录影响域名解析托管权，删除需输入域名强确认
+      await ElMessageBox.prompt(
+        `即将删除 NS 记录 ${row.name} → ${row.value.slice(0, 50)}。删除可能导致域名失去解析托管，影响线上服务！请输入完整域名 ${zoneName.value} 确认。`,
+        '删除 NS 记录（高危）',
+        { type: 'error', confirmButtonText: '确认删除', cancelButtonText: '取消',
+          inputPattern: new RegExp(`^${zoneName.value.replace(/\./g, '\\.')}$`),
+          inputErrorMessage: `请输入完整域名 ${zoneName.value}` },
+      )
+    } else {
+      await ElMessageBox.confirm(
+        `确认删除记录 ${row.type} ${row.name} → ${row.value.slice(0, 50)}？此操作立即生效且不可撤销。`,
+        '删除解析记录',
+        { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+      )
+    }
   } catch {
     return
   }
@@ -366,12 +398,26 @@ async function openPlanDialog() {
 }
 
 async function execPush() {
+  const nsActions = planActions.value.filter(
+    (a) => a.record?.type === 'NS' && ['delete', 'update'].includes(a.action),
+  )
   try {
-    await ElMessageBox.confirm(
-      `确认对 ${zoneName.value} 执行 ${planActions.value.length} 项 DNS 变更？此操作直接影响线上解析。`,
-      '执行变更',
-      { type: 'warning', confirmButtonText: '执行', cancelButtonText: '取消' },
-    )
+    if (nsActions.length) {
+      // 变更中包含 NS 的删除/修改，需要输入域名强确认
+      await ElMessageBox.prompt(
+        `本次变更包含 ${nsActions.length} 项 NS 记录的删除/修改，可能导致域名失去解析托管！请输入完整域名 ${zoneName.value} 确认执行。`,
+        '执行变更（含高危 NS 操作）',
+        { type: 'error', confirmButtonText: '确认执行', cancelButtonText: '取消',
+          inputPattern: new RegExp(`^${zoneName.value.replace(/\./g, '\\.')}$`),
+          inputErrorMessage: `请输入完整域名 ${zoneName.value}` },
+      )
+    } else {
+      await ElMessageBox.confirm(
+        `确认对 ${zoneName.value} 执行 ${planActions.value.length} 项 DNS 变更？此操作直接影响线上解析。`,
+        '执行变更',
+        { type: 'warning', confirmButtonText: '执行', cancelButtonText: '取消' },
+      )
+    }
   } catch {
     return
   }
@@ -400,6 +446,11 @@ async function execPush() {
   } finally {
     pushing.value = false
   }
+}
+
+// 返回列表并通知刷新该账号的记录数缓存
+function goBack() {
+  router.push({ path: '/dns', query: { refresh_account: accountId.value } })
 }
 
 // ---- 快照 ----
@@ -489,6 +540,16 @@ async function restoreFrom(row) {
   white-space: pre-wrap;
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 13px;
+}
+.record-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.filter-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 .plan-alert {
   margin-bottom: 12px;
