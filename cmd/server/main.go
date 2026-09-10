@@ -65,8 +65,11 @@ func main() {
 	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), repo.NewDnsRecordRepo(db), grantRepo, dnsSvc)
 	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
 	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo, repo.NewDnsRecordRepo(db))
+	acmeSvc := service.NewAcmeService(
+		repo.NewAcmeAccountRepo(db), repo.NewIssuedCertRepo(db),
+		repo.NewZoneRepo(db), dnsSvc, accountRepo, cipher)
 
-	// 定时任务：到期检查 / 台账同步 / 漂移检测 / Zone 缓存刷新 / 证书检查
+	// 定时任务：到期检查 / 台账同步 / 漂移检测 / Zone 缓存刷新 / 证书检查 / 证书自动续期
 	// 计划存 system_settings（设置页可改，热生效）；缺省值见 service.scheduleDefaults
 	scheduler := job.NewScheduler(job.Runners{
 		AlertSvc:    alertSvc,
@@ -74,6 +77,7 @@ func main() {
 		SnapshotSvc: snapshotSvc,
 		ZoneSvc:     zoneSvc,
 		CertSvc:     certSvc,
+		AcmeSvc:     acmeSvc,
 	})
 	specs, err := service.NewSettingsService(repo.NewSettingRepo(db)).AllSchedules()
 	if err != nil {

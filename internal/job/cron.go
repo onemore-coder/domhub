@@ -15,12 +15,13 @@ import (
 
 // Job 名称常量（对应 system_settings 的 key）。
 const (
-	JobExpiryCheck  = "expiry_check"  // 域名到期检查
-	JobSyncDomains  = "sync_domains"  // 域名台账自动同步
-	JobDriftCheck   = "drift_check"   // DNS 漂移检测
-	JobSyncZones    = "sync_zones"    // 托管域名元数据缓存刷新
-	JobSyncRecords  = "sync_records"  // 解析记录镜像刷新
-	JobCertCheck    = "cert_check"    // SSL 证书到期检查
+	JobExpiryCheck = "expiry_check" // 域名到期检查
+	JobSyncDomains = "sync_domains" // 域名台账自动同步
+	JobDriftCheck  = "drift_check"  // DNS 漂移检测
+	JobSyncZones   = "sync_zones"   // 托管域名元数据缓存刷新
+	JobSyncRecords = "sync_records" // 解析记录镜像刷新
+	JobCertCheck   = "cert_check"   // SSL 证书到期检查
+	JobCertRenew   = "cert_renew"   // 已签发证书自动续期（ACME）
 )
 
 // Scheduler 定时任务调度器。
@@ -37,6 +38,7 @@ type Runners struct {
 	SnapshotSvc *service.SnapshotService
 	ZoneSvc     *service.ZoneService
 	CertSvc     *service.CertService
+	AcmeSvc     *service.AcmeService
 }
 
 // NewScheduler 创建（不启动）调度器。
@@ -108,6 +110,14 @@ func (s *Scheduler) jobFunc(name string) func() {
 			}
 			logger.L().Info("证书检查完成",
 				zap.Int("checked", checked), zap.Int("alerts_sent", alerted))
+		}
+	case JobCertRenew:
+		return func() {
+			renewed, failed := s.runners.AcmeSvc.RunRenewals(30)
+			if renewed+failed > 0 {
+				logger.L().Info("证书自动续期完成",
+					zap.Int("renewed", renewed), zap.Int("failed", failed))
+			}
 		}
 	}
 	return nil

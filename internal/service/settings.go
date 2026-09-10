@@ -13,22 +13,24 @@ import (
 
 // 可配置的定时任务 key 与默认值（7 位 cron，带秒）。
 const (
-	KeyExpiryCheckCron  = "expiry_check_cron"
-	KeySyncCron         = "sync_domains_cron"
-	KeyDriftCheckCron   = "drift_check_cron"
-	KeySyncZonesCron    = "sync_zones_cron"
-	KeySyncRecordsCron  = "sync_records_cron"
-	KeyCertCheckCron    = "cert_check_cron"
+	KeyExpiryCheckCron = "expiry_check_cron"
+	KeySyncCron        = "sync_domains_cron"
+	KeyDriftCheckCron  = "drift_check_cron"
+	KeySyncZonesCron   = "sync_zones_cron"
+	KeySyncRecordsCron = "sync_records_cron"
+	KeyCertCheckCron   = "cert_check_cron"
+	KeyCertRenewCron   = "cert_renew_cron"
 )
 
 // scheduleDefaults 任务默认计划（空串 = 默认禁用）。
 var scheduleDefaults = map[string]string{
-	KeyExpiryCheckCron: "0 0 9 * * *",   // 每天 09:00
-	KeySyncCron:        "",              // 默认关闭
-	KeyDriftCheckCron:  "",              // 默认关闭
-	KeySyncZonesCron:   "0 0 */2 * * *", // 默认每 2 小时刷新 Zone 缓存
+	KeyExpiryCheckCron: "0 0 9 * * *",    // 每天 09:00
+	KeySyncCron:        "",               // 默认关闭
+	KeyDriftCheckCron:  "",               // 默认关闭
+	KeySyncZonesCron:   "0 0 */2 * * *",  // 默认每 2 小时刷新 Zone 缓存
 	KeySyncRecordsCron: "0 30 */2 * * *", // 每 2 小时刷新解析记录镜像（与 Zone 错峰）
-	KeyCertCheckCron:   "0 0 8 * * *",   // 每天 08:00 检查证书
+	KeyCertCheckCron:   "0 0 8 * * *",    // 每天 08:00 检查证书
+	KeyCertRenewCron:   "0 30 8 * * *",   // 每天 08:30 自动续期快到期的已签发证书
 }
 
 // ScheduleApplier 设置更新后热生效（由 job.Scheduler 实现）。

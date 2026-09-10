@@ -72,3 +72,13 @@ export const deleteUser = (id) => http.delete(`/users/${id}`)
 export const getUserZones = (id) => http.get(`/users/${id}/zones`)
 export const setUserZones = (id, grants) => http.put(`/users/${id}/zones`, { grants })
 export const changeMyPassword = (data) => http.post('/users/me/password', data)
+
+// ---- 证书申请（ACME 免费证书） ----
+export const listCertCAs = () => http.get('/certs-issued/cas')
+export const listIssuedCerts = (params) => http.get('/certs-issued', { params })
+export const applyCert = (data) => http.post('/certs-issued/apply', data)
+export const getIssuedCert = (id) => http.get(`/certs-issued/${id}`)
+export const renewIssuedCert = (id) => http.post(`/certs-issued/${id}/renew`)
+export const setIssuedCertAutoRenew = (id, autoRenew) => http.put(`/certs-issued/${id}/auto-renew`, { auto_renew: autoRenew })
+export const deleteIssuedCert = (id) => http.delete(`/certs-issued/${id}`)
+export const downloadIssuedCert = (id, type) => `/api/v1/certs-issued/${id}/download?type=${type}`

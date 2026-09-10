@@ -65,6 +65,9 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
 	tokenSvc := service.NewTokenService(repo.NewApiTokenRepo(db), repo.NewUserRepo(db))
 	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo, repo.NewDnsRecordRepo(db))
+	acmeSvc := service.NewAcmeService(
+		repo.NewAcmeAccountRepo(db), repo.NewIssuedCertRepo(db),
+		repo.NewZoneRepo(db), dnsSvc, accountRepo, cipher)
 	if scheduleApplier != nil {
 		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
 	}
@@ -79,6 +82,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	settingsH := handler.NewSettingsHandler(settingsSvc, db)
 	zoneH := handler.NewZoneHandler(zoneSvc)
 	certH := handler.NewCertHandler(certSvc)
+	acmeH := handler.NewAcmeHandler(acmeSvc)
 
 	adminOnly := middleware.RequireRole(model.RoleAdmin)
 	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
@@ -115,94 +119,104 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
 
-	// 云账号：读所有登录用户可见（AK 已脱敏），写需 operator+；用户/凭证管理 admin 专属
-	accountGroup := protected.Group("/accounts")
-	{
-		accountGroup.GET("", accountH.List)
-		accountGroup.POST("", writeAccess, accountH.Create)
-		accountGroup.PUT("/:id", writeAccess, accountH.Update)
-		accountGroup.DELETE("/:id", adminOnly, accountH.Delete)
-		accountGroup.POST("/:id/check", writeAccess, accountH.Check)
-		accountGroup.POST("/:id/sync", writeAccess, accountH.Sync)
-	}
+		// 云账号：读所有登录用户可见（AK 已脱敏），写需 operator+；用户/凭证管理 admin 专属
+		accountGroup := protected.Group("/accounts")
+		{
+			accountGroup.GET("", accountH.List)
+			accountGroup.POST("", writeAccess, accountH.Create)
+			accountGroup.PUT("/:id", writeAccess, accountH.Update)
+			accountGroup.DELETE("/:id", adminOnly, accountH.Delete)
+			accountGroup.POST("/:id/check", writeAccess, accountH.Check)
+			accountGroup.POST("/:id/sync", writeAccess, accountH.Sync)
+		}
 
-	protected.GET("/domains", domainH.List)
-	protected.POST("/domains/sync", writeAccess, domainH.SyncAll)
+		protected.GET("/domains", domainH.List)
+		protected.POST("/domains/sync", writeAccess, domainH.SyncAll)
 
-	channelGroup := protected.Group("/channels")
-	{
-		channelGroup.GET("", alertH.ListChannels)
-		channelGroup.POST("", adminOnly, alertH.CreateChannel)
-		channelGroup.POST("/test", writeAccess, alertH.TestChannel)
-		channelGroup.POST("/:id/test", writeAccess, alertH.TestChannelByID)
-		channelGroup.PUT("/:id", adminOnly, alertH.UpdateChannel)
-		channelGroup.DELETE("/:id", adminOnly, alertH.DeleteChannel)
-	}
+		channelGroup := protected.Group("/channels")
+		{
+			channelGroup.GET("", alertH.ListChannels)
+			channelGroup.POST("", adminOnly, alertH.CreateChannel)
+			channelGroup.POST("/test", writeAccess, alertH.TestChannel)
+			channelGroup.POST("/:id/test", writeAccess, alertH.TestChannelByID)
+			channelGroup.PUT("/:id", adminOnly, alertH.UpdateChannel)
+			channelGroup.DELETE("/:id", adminOnly, alertH.DeleteChannel)
+		}
 
-	ruleGroup := protected.Group("/alert-rules")
-	{
-		ruleGroup.GET("", alertH.ListRules)
-		ruleGroup.POST("", adminOnly, alertH.CreateRule)
-		ruleGroup.PUT("/:id", adminOnly, alertH.UpdateRule)
-		ruleGroup.DELETE("/:id", adminOnly, alertH.DeleteRule)
-	}
+		ruleGroup := protected.Group("/alert-rules")
+		{
+			ruleGroup.GET("", alertH.ListRules)
+			ruleGroup.POST("", adminOnly, alertH.CreateRule)
+			ruleGroup.PUT("/:id", adminOnly, alertH.UpdateRule)
+			ruleGroup.DELETE("/:id", adminOnly, alertH.DeleteRule)
+		}
 
-	protected.POST("/alerts/check", writeAccess, alertH.RunCheck)
-	protected.GET("/alerts/logs", alertH.ListLogs)
+		protected.POST("/alerts/check", writeAccess, alertH.RunCheck)
+		protected.GET("/alerts/logs", alertH.ListLogs)
 
-	// M6：SSL 证书监控（读需登录，写需 operator+）
-	protected.GET("/certs", certH.List)
-	protected.POST("/certs", writeAccess, certH.AddManual)
-	protected.POST("/certs/check", writeAccess, certH.RunCheck)
-	protected.POST("/certs/:id/check", writeAccess, certH.CheckOne)
-	protected.PUT("/certs/:id/excluded", writeAccess, certH.SetExcluded)
-	protected.DELETE("/certs/:id", writeAccess, certH.Delete)
+		// M6：SSL 证书监控（读需登录，写需 operator+）
+		protected.GET("/certs", certH.List)
+		protected.POST("/certs", writeAccess, certH.AddManual)
+		protected.POST("/certs/check", writeAccess, certH.RunCheck)
+		protected.POST("/certs/:id/check", writeAccess, certH.CheckOne)
+		protected.PUT("/certs/:id/excluded", writeAccess, certH.SetExcluded)
+		protected.DELETE("/certs/:id", writeAccess, certH.Delete)
 
-	// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
-	// zones/records 走本地镜像（秒开），sync 回源厂商 API；记录操作仍实时
-	protected.GET("/dns/zones", zoneH.ListCached)
-	protected.POST("/dns/zones/refresh", writeAccess, zoneH.Refresh)
-	protected.GET("/dns/records-cached", dnsH.ListCached)
-	protected.POST("/dns/records/sync", writeAccess, dnsH.SyncRecords)
-	protected.GET("/dns/records", dnsH.ListRecords)
-	protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)
-	protected.PUT("/dns/records", writeAccess, dnsH.UpdateRecord)
-	protected.DELETE("/dns/records", writeAccess, dnsH.DeleteRecord)
-	protected.POST("/dns/plan", dnsH.Plan)
-	protected.POST("/dns/push", writeAccess, dnsH.Push)
+		// 证书申请（ACME 免费证书，DNS-01 复用云账号解析通道）
+		protected.GET("/certs-issued/cas", acmeH.ListCAs)
+		protected.GET("/certs-issued", acmeH.List)
+		protected.GET("/certs-issued/:id", acmeH.Get)
+		protected.POST("/certs-issued/apply", writeAccess, acmeH.Apply)
+		protected.POST("/certs-issued/:id/renew", writeAccess, acmeH.Renew)
+		protected.PUT("/certs-issued/:id/auto-renew", writeAccess, acmeH.SetAutoRenew)
+		protected.DELETE("/certs-issued/:id", writeAccess, acmeH.Delete)
+		protected.GET("/certs-issued/:id/download", acmeH.Download)
 
-	// M5：API Token（个人管理，dht_ 前缀凭据供 CI/自动化调用）
-	tokenH := handler.NewTokenHandler(tokenSvc)
-	tokenGroup := protected.Group("/tokens")
-	{
-		tokenGroup.GET("", tokenH.List)
-		tokenGroup.POST("", writeAccess, tokenH.Create)
-		tokenGroup.DELETE("/:id", tokenH.Revoke)
-	}
+		// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
+		// zones/records 走本地镜像（秒开），sync 回源厂商 API；记录操作仍实时
+		protected.GET("/dns/zones", zoneH.ListCached)
+		protected.POST("/dns/zones/refresh", writeAccess, zoneH.Refresh)
+		protected.GET("/dns/records-cached", dnsH.ListCached)
+		protected.POST("/dns/records/sync", writeAccess, dnsH.SyncRecords)
+		protected.GET("/dns/records", dnsH.ListRecords)
+		protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)
+		protected.PUT("/dns/records", writeAccess, dnsH.UpdateRecord)
+		protected.DELETE("/dns/records", writeAccess, dnsH.DeleteRecord)
+		protected.POST("/dns/plan", dnsH.Plan)
+		protected.POST("/dns/push", writeAccess, dnsH.Push)
 
-	// M2：审计日志（admin 专属）
-	protected.GET("/audit-logs", adminOnly, auditH.List)
+		// M5：API Token（个人管理，dht_ 前缀凭据供 CI/自动化调用）
+		tokenH := handler.NewTokenHandler(tokenSvc)
+		tokenGroup := protected.Group("/tokens")
+		{
+			tokenGroup.GET("", tokenH.List)
+			tokenGroup.POST("", writeAccess, tokenH.Create)
+			tokenGroup.DELETE("/:id", tokenH.Revoke)
+		}
 
-	// M3：用户管理与个人改密
-	protected.GET("/users", adminOnly, userH.List)
-	protected.POST("/users", adminOnly, userH.Create)
-	protected.PUT("/users/:id", adminOnly, userH.Update)
-	protected.DELETE("/users/:id", adminOnly, userH.Delete)
-	protected.GET("/users/:id/zones", adminOnly, userH.Grants)
-	protected.PUT("/users/:id/zones", adminOnly, userH.SetGrants)
-	protected.POST("/users/me/password", userH.ChangePassword)
+		// M2：审计日志（admin 专属）
+		protected.GET("/audit-logs", adminOnly, auditH.List)
 
-	// M4：解析记录快照（读需登录，写需 operator+）
-	protected.GET("/dns/snapshots", snapshotH.List)
-	protected.GET("/dns/snapshots/:id", snapshotH.Get)
-	protected.POST("/dns/snapshots", writeAccess, snapshotH.Capture)
-	protected.POST("/dns/snapshots/diff", snapshotH.Diff)
-	protected.POST("/dns/snapshots/restore-plan", writeAccess, snapshotH.RestorePlan)
+		// M3：用户管理与个人改密
+		protected.GET("/users", adminOnly, userH.List)
+		protected.POST("/users", adminOnly, userH.Create)
+		protected.PUT("/users/:id", adminOnly, userH.Update)
+		protected.DELETE("/users/:id", adminOnly, userH.Delete)
+		protected.GET("/users/:id/zones", adminOnly, userH.Grants)
+		protected.PUT("/users/:id/zones", adminOnly, userH.SetGrants)
+		protected.POST("/users/me/password", userH.ChangePassword)
 
-	// M4：域名标签/备注 + 系统设置
-	protected.PATCH("/domains/:id", writeAccess, domainH.UpdateMeta)
-	protected.GET("/settings", adminOnly, settingsH.Get)
-	protected.PUT("/settings/schedules", adminOnly, settingsH.Update)
+		// M4：解析记录快照（读需登录，写需 operator+）
+		protected.GET("/dns/snapshots", snapshotH.List)
+		protected.GET("/dns/snapshots/:id", snapshotH.Get)
+		protected.POST("/dns/snapshots", writeAccess, snapshotH.Capture)
+		protected.POST("/dns/snapshots/diff", snapshotH.Diff)
+		protected.POST("/dns/snapshots/restore-plan", writeAccess, snapshotH.RestorePlan)
+
+		// M4：域名标签/备注 + 系统设置
+		protected.PATCH("/domains/:id", writeAccess, domainH.UpdateMeta)
+		protected.GET("/settings", adminOnly, settingsH.Get)
+		protected.PUT("/settings/schedules", adminOnly, settingsH.Update)
 	}
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）
