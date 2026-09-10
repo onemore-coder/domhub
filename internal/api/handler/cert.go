@@ -70,6 +70,21 @@ func (h *CertHandler) AddManual(c *gin.Context) {
 	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": cs})
 }
 
+// CheckOne POST /api/v1/certs/:id/check —— 手动触发单个主机的证书检测。
+func (h *CertHandler) CheckOne(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(400, gin.H{"code": 400, "message": "ID 非法"})
+		return
+	}
+	cs, err := h.svc.CheckOne(uint(id))
+	if err != nil {
+		c.JSON(400, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": cs})
+}
+
 // Delete DELETE /api/v1/certs/:id —— 删除监控条目。
 func (h *CertHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)

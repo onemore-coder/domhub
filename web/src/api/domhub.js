@@ -15,6 +15,7 @@ export const updateDomainMeta = (id, data) => http.patch(`/domains/${id}`, data)
 
 // 告警
 export const runCertCheck = (data = {}) => http.post('/certs/check', data)
+export const checkCertByID = (id) => http.post(`/certs/${id}/check`)
 export const listCerts = () => http.get('/certs')
 export const addCertHost = (data) => http.post('/certs', data)
 export const deleteCert = (id) => http.delete(`/certs/${id}`)

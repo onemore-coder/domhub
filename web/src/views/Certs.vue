@@ -69,8 +69,9 @@
             <span class="cert-checked">{{ formatTime(row.checked_at) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
+            <el-button link size="small" :loading="checkingId === row.id" @click="doCheckOne(row)">检测</el-button>
             <el-button link size="small" @click="doToggleExcluded(row)">{{ row.excluded ? '取消排除' : '排除' }}</el-button>
             <el-button link size="small" type="danger" @click="doDeleteCert(row)">删除</el-button>
           </template>
@@ -83,11 +84,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listCerts, runCertCheck, addCertHost, deleteCert, setCertExcluded } from '../api/domhub'
+import { listCerts, runCertCheck, checkCertByID, addCertHost, deleteCert, setCertExcluded } from '../api/domhub'
 
 const loading = ref(false)
 const certs = ref([])
 const certChecking = ref(false)
+const checkingId = ref(0)
 const newHost = ref('')
 
 // 证书卡片默认只展示需关注项（即将到期或异常），健康的只计入总数
@@ -115,13 +117,34 @@ const displayCerts = computed(() => {
 const certTagType = (days) => (days <= 7 ? 'danger' : days <= 30 ? 'warning' : 'success')
 const formatTime = (t) => (t ? new Date(t).toLocaleString('zh-CN') : '—')
 
+async function reloadCerts() {
+  const cs = await listCerts()
+  certs.value = cs.data.items
+}
+
 async function load() {
   loading.value = true
   try {
-    const cs = await listCerts()
-    certs.value = cs.data.items
+    await reloadCerts()
   } finally {
     loading.value = false
+  }
+}
+
+// 单主机立即检测：探测当前行并更新状态
+async function doCheckOne(row) {
+  checkingId.value = row.id
+  try {
+    const res = await checkCertByID(row.id)
+    const cs = res.data
+    cs.ok
+      ? ElMessage.success(`${row.host} 检测成功，证书剩余 ${cs.days_left} 天`)
+      : ElMessage.warning(`${row.host} 检测失败：${cs.error || '未知原因'}`)
+    await reloadCerts()
+  } catch {
+    // 拦截器已弹出错误提示
+  } finally {
+    checkingId.value = 0
   }
 }
 
@@ -130,8 +153,7 @@ async function doCertCheck() {
   try {
     const res = await runCertCheck()
     ElMessage.success(`已检查 ${res.data.checked} 个主机，发送 ${res.data.alerts_sent} 条告警`)
-    const cs = await listCerts()
-    certs.value = cs.data.items
+    await reloadCerts()
   } catch {
     // 拦截器已弹出错误提示
   } finally {
@@ -146,11 +168,19 @@ async function doAddHost() {
     return
   }
   try {
-    await addCertHost({ host })
+    const res = await addCertHost({ host })
     newHost.value = ''
-    ElMessage.success('已添加，点击「立即检查」获取证书状态')
-    const cs = await listCerts()
-    certs.value = cs.data.items
+    await reloadCerts()
+    // 添加后自动探测一次，立刻拿到证书状态
+    checkingId.value = res.data.id
+    try {
+      await checkCertByID(res.data.id)
+    } catch {
+      // 首次探测失败也保留条目，后续可手动重试
+    }
+    checkingId.value = 0
+    ElMessage.success(`已添加并完成首次检测`)
+    await reloadCerts()
   } catch {
     // 拦截器已弹出错误提示
   }
@@ -159,8 +189,7 @@ async function doAddHost() {
 async function doToggleExcluded(row) {
   try {
     await setCertExcluded(row.id, !row.excluded)
-    const cs = await listCerts()
-    certs.value = cs.data.items
+    await reloadCerts()
   } catch {
     // 拦截器已弹出错误提示
   }
@@ -178,8 +207,7 @@ async function doDeleteCert(row) {
   }
   try {
     await deleteCert(row.id)
-    const cs = await listCerts()
-    certs.value = cs.data.items
+    await reloadCerts()
   } catch {
     // 拦截器已弹出错误提示
   }

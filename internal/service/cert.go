@@ -40,6 +40,7 @@ type certTarget struct {
 	host       string
 	domainID   uint
 	domainName string
+	source     string // auto 自动发现 | manual 手动添加
 }
 
 // probeCert 对主机名做 TLS 拨测，读取证书信息。
@@ -188,6 +189,28 @@ func (s *CertService) CheckDomains(ctx context.Context, domainID uint) (checked,
 		}
 	}
 
+	// 并入手动添加的主机（自动发现覆盖不到，如外部 CDN 域名）；
+	// 已在自动发现结果中的跳过。全量检查（domainID=0）才包含。
+	if domainID == 0 {
+		seen := make(map[string]struct{}, len(targets))
+		for _, t := range targets {
+			seen[t.host] = struct{}{}
+		}
+		manuals, err := s.certs.ListManual()
+		if err != nil {
+			return 0, 0, err
+		}
+		for _, m := range manuals {
+			if _, dup := seen[m.Host]; dup {
+				continue
+			}
+			seen[m.Host] = struct{}{}
+			targets = append(targets, certTarget{
+				host: m.Host, domainID: m.DomainID, domainName: m.DomainName, source: "manual",
+			})
+		}
+	}
+
 	statuses := make([]*model.CertStatus, 0, len(targets))
 	seenHosts := make([]string, 0, len(targets))
 	for _, t := range targets {
@@ -225,11 +248,14 @@ func (s *CertService) CheckDomains(ctx context.Context, domainID uint) (checked,
 	return checked, alerted, err
 }
 
-// probeAndStore 探测单个主机名并落库（保留已告警档位；证书更换后重置）。
+// probeAndStore 探测单个主机名并落库（保留已告警档位与来源；证书更换后重置档位）。
 func (s *CertService) probeAndStore(t certTarget) (*model.CertStatus, error) {
 	cs := &model.CertStatus{
 		Host: t.host, DomainID: t.domainID, DomainName: t.domainName,
-		Source: "auto", OK: true,
+		Source: t.source, OK: true,
+	}
+	if cs.Source == "" {
+		cs.Source = "auto"
 	}
 	notAfter, issuer, subject, err := probeCert(t.host)
 	if err != nil {
@@ -243,15 +269,39 @@ func (s *CertService) probeAndStore(t certTarget) (*model.CertStatus, error) {
 		cs.DaysLeft = int(time.Until(notAfter).Hours() / 24)
 	}
 
-	// 保留已告警档位；证书更换（NotAfter 变化）后重置
+	// 保留已告警档位；证书更换（NotAfter 变化）后重置。
+	// 来源以库中已有记录为准（手动添加的主机探测后仍是 manual）。
 	if prev, e := s.certs.FindByHost(t.host); e == nil && prev != nil {
 		if prev.NotAfter != nil && cs.NotAfter != nil && prev.NotAfter.Equal(*cs.NotAfter) {
 			cs.AlertedOffsets = prev.AlertedOffsets
+		}
+		cs.Source = prev.Source
+		if cs.DomainName == "" {
+			cs.DomainName = prev.DomainName
 		}
 	}
 	cs.CheckedAt = time.Now()
 	err = s.certs.Upsert(cs)
 	return cs, err
+}
+
+// CheckOne 手动触发单个主机的证书检测（操作列「立即检测」按钮）。
+// 已排除的条目不探测（保留人工决策）。
+func (s *CertService) CheckOne(id uint) (*model.CertStatus, error) {
+	prev, err := s.certs.FindByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("监控条目不存在")
+	}
+	if prev.Excluded {
+		return nil, fmt.Errorf("该主机已排除，取消排除后才能检测")
+	}
+	cs, err := s.probeAndStore(certTarget{
+		host: prev.Host, domainID: prev.DomainID, domainName: prev.DomainName, source: prev.Source,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cs, nil
 }
 
 // dispatchAlerts 按启用的 cert_expire 规则发送告警（同一证书同档位只发一次）。

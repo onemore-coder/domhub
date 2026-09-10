@@ -154,6 +154,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	protected.GET("/certs", certH.List)
 	protected.POST("/certs", writeAccess, certH.AddManual)
 	protected.POST("/certs/check", writeAccess, certH.RunCheck)
+	protected.POST("/certs/:id/check", writeAccess, certH.CheckOne)
 	protected.PUT("/certs/:id/excluded", writeAccess, certH.SetExcluded)
 	protected.DELETE("/certs/:id", writeAccess, certH.Delete)
 

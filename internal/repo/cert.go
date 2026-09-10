@@ -38,6 +38,13 @@ func (r *CertRepo) FindByHost(host string) (*model.CertStatus, error) {
 	return &cs, nil
 }
 
+// ListManual 手动添加的监控主机（不参与自动发现，批量检查需单独并入探测队列）。
+func (r *CertRepo) ListManual() ([]model.CertStatus, error) {
+	var list []model.CertStatus
+	err := r.db.Where("source = ?", "manual").Find(&list).Error
+	return list, err
+}
+
 func (r *CertRepo) FindByID(id uint) (*model.CertStatus, error) {
 	var cs model.CertStatus
 	err := r.db.First(&cs, id).Error
