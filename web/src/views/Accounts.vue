@@ -59,13 +59,20 @@
           </el-select>
         </el-form-item>
         <el-form-item label="AccessKey" required>
-          <el-input v-model="form.access_key" placeholder="AccessKey ID" show-password />
+          <el-input
+            v-model="form.access_key" :placeholder="akPlaceholder" show-password
+          />
         </el-form-item>
-        <el-form-item label="SecretKey" required>
-          <el-input v-model="form.secret_key" placeholder="AccessKey Secret（AES 加密存储）" show-password />
+        <el-form-item label="SecretKey" :required="form.provider !== 'cloudflare'">
+          <el-input
+            v-model="form.secret_key" :placeholder="skPlaceholder" show-password
+          />
         </el-form-item>
         <el-form-item v-if="form.provider === 'aws'" label="Region">
           <el-input v-model="form.region" placeholder="默认 us-east-1" />
+        </el-form-item>
+        <el-form-item v-if="form.provider === 'cloudflare'" label="Account ID">
+          <el-input v-model="form.region" placeholder="可选；填写后同步 Registrar 注册域名" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -77,7 +84,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listAccounts, createAccount, deleteAccount, checkAccount, syncAccount } from '../api/domhub'
 
@@ -92,10 +99,20 @@ const providerLabels = {
   tencent: '腾讯云',
   aliyun: '阿里云',
   aws: 'AWS',
+  cloudflare: 'Cloudflare',
 }
 
 const providerLabel = (p) => providerLabels[p] || p
-const providerTagType = (p) => ({ tencent: 'primary', aliyun: 'warning', aws: 'warning' }[p] || 'info')
+const providerTagType = (p) => ({ tencent: 'primary', aliyun: 'warning', aws: 'warning', cloudflare: 'danger' }[p] || 'info')
+
+const akPlaceholder = computed(() =>
+  form.value.provider === 'cloudflare'
+    ? 'API Token（推荐）或 Account Email（搭配 Global API Key）'
+    : 'AccessKey ID')
+const skPlaceholder = computed(() =>
+  form.value.provider === 'cloudflare'
+    ? '留空使用 API Token；或填 Global API Key（搭配 Email）'
+    : 'AccessKey Secret（AES 加密存储）')
 
 const formatTime = (t) => (t ? new Date(t).toLocaleString('zh-CN') : '—')
 

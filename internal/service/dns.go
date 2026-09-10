@@ -68,9 +68,11 @@ func (s *DNSService) buildDNSProvider(a *model.CloudAccount) (provider.DNSProvid
 	if err != nil {
 		return nil, fmt.Errorf("AccessKey 解密失败: %w", err)
 	}
-	sk, err := s.cipher.Decrypt(a.SecretKey)
-	if err != nil {
-		return nil, fmt.Errorf("SecretKey 解密失败: %w", err)
+	sk := ""
+	if a.SecretKey != "" {
+		if sk, err = s.cipher.Decrypt(a.SecretKey); err != nil {
+			return nil, fmt.Errorf("SecretKey 解密失败: %w", err)
+		}
 	}
 	return factory(provider.Credential{AccessKey: ak, SecretKey: sk, Region: a.Region})
 }

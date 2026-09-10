@@ -33,18 +33,15 @@ func NewCloudAccountService(
 }
 
 // Create 接入云账号（凭证加密落库）。
+// Token 型厂商（如 cloudflare）只需 AccessKey，SecretKey 可为空。
 func (s *CloudAccountService) Create(name, prov, ak, sk, region string) (*model.CloudAccount, error) {
 	if _, err := provider.Get(prov); err != nil {
 		return nil, err
 	}
-	if name == "" || ak == "" || sk == "" {
+	if name == "" || ak == "" {
 		return nil, fmt.Errorf("名称与凭证不能为空")
 	}
 	encAK, err := s.cipher.Encrypt(ak)
-	if err != nil {
-		return nil, fmt.Errorf("凭证加密失败: %w", err)
-	}
-	encSK, err := s.cipher.Encrypt(sk)
 	if err != nil {
 		return nil, fmt.Errorf("凭证加密失败: %w", err)
 	}
@@ -52,9 +49,15 @@ func (s *CloudAccountService) Create(name, prov, ak, sk, region string) (*model.
 		Name:      name,
 		Provider:  prov,
 		AccessKey: encAK,
-		SecretKey: encSK,
 		Region:    region,
 		Status:    1,
+	}
+	if sk != "" {
+		encSK, err := s.cipher.Encrypt(sk)
+		if err != nil {
+			return nil, fmt.Errorf("凭证加密失败: %w", err)
+		}
+		a.SecretKey = encSK
 	}
 	if err := s.accounts.Create(a); err != nil {
 		return nil, err
@@ -126,9 +129,11 @@ func (s *CloudAccountService) buildProvider(a *model.CloudAccount) (provider.Dom
 	if err != nil {
 		return nil, fmt.Errorf("AccessKey 解密失败: %w", err)
 	}
-	sk, err := s.cipher.Decrypt(a.SecretKey)
-	if err != nil {
-		return nil, fmt.Errorf("SecretKey 解密失败: %w", err)
+	sk := ""
+	if a.SecretKey != "" {
+		if sk, err = s.cipher.Decrypt(a.SecretKey); err != nil {
+			return nil, fmt.Errorf("SecretKey 解密失败: %w", err)
+		}
 	}
 	return factory(provider.Credential{AccessKey: ak, SecretKey: sk, Region: a.Region})
 }
