@@ -143,6 +143,7 @@ type recordReq struct {
 	TTL       int    `json:"ttl"`
 	Priority  int    `json:"priority"`
 	Line      string `json:"line"`
+	Proxied   *bool  `json:"proxied"`   // Cloudflare 橙云代理（nil 视为 false）
 	RecordID  string `json:"record_id"` // update/delete 用
 	Desc      string `json:"desc"`      // delete 审计用描述
 }
@@ -158,6 +159,7 @@ func (h *DNSHandler) CreateRecord(c *gin.Context) {
 	rec := provider.RecordInfo{
 		Name: req.Name, Type: req.Type, Value: req.Value,
 		TTL: req.TTL, Priority: req.Priority, Line: req.Line,
+		Proxied: req.Proxied != nil && *req.Proxied,
 	}
 	id, err := h.dnsSvc.CreateRecord(req.AccountID, req.Zone, rec, op)
 	if err != nil {
@@ -180,9 +182,10 @@ func (h *DNSHandler) UpdateRecord(c *gin.Context) {
 	}
 	op := ctxActor(c)
 	rec := provider.RecordInfo{
-		ID: req.RecordID,
+		ID:   req.RecordID,
 		Name: req.Name, Type: req.Type, Value: req.Value,
 		TTL: req.TTL, Priority: req.Priority, Line: req.Line,
+		Proxied: req.Proxied != nil && *req.Proxied,
 	}
 	if err := h.dnsSvc.UpdateRecord(req.AccountID, req.Zone, rec, op); err != nil {
 		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
@@ -211,11 +214,11 @@ func (h *DNSHandler) DeleteRecord(c *gin.Context) {
 }
 
 type planReq struct {
-	AccountID uint                   `json:"account_id"`
-	Zone      string                 `json:"zone"`
-	Desired   []provider.RecordInfo  `json:"desired"`
-	Actions   []service.PlanAction   `json:"actions"` // push 用
-	Mode      string                 `json:"mode"`    // preview | push
+	AccountID uint                  `json:"account_id"`
+	Zone      string                `json:"zone"`
+	Desired   []provider.RecordInfo `json:"desired"`
+	Actions   []service.PlanAction  `json:"actions"` // push 用
+	Mode      string                `json:"mode"`    // preview | push
 }
 
 // Plan POST /api/v1/dns/plan

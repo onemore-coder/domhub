@@ -279,13 +279,23 @@ func recordKey(r provider.RecordInfo) string {
 }
 
 // recordEqual 比较两条记录的关键字段。
+// TTL 比较做了代理归一：开启 CDN 代理（Cloudflare 橙云）的记录 TTL 强制为 auto(1)。
 func recordEqual(a, b provider.RecordInfo) bool {
 	return a.Name == b.Name &&
 		a.Type == b.Type &&
 		normalizeValue(a.Value) == normalizeValue(b.Value) &&
-		a.TTL == b.TTL &&
+		normalizeTTL(a) == normalizeTTL(b) &&
 		a.Priority == b.Priority &&
-		normalizeLine(a.Line) == normalizeLine(b.Line)
+		normalizeLine(a.Line) == normalizeLine(b.Line) &&
+		a.Proxied == b.Proxied
+}
+
+// normalizeTTL 代理记录的 TTL 一律视为 auto(1)。
+func normalizeTTL(r provider.RecordInfo) int {
+	if r.Proxied {
+		return 1
+	}
+	return r.TTL
 }
 
 // normalizeValue 统一多值分隔符与空白。

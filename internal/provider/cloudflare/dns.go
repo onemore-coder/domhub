@@ -110,10 +110,6 @@ func (p *Provider) ListRecords(ctx context.Context, zone string) ([]provider.Rec
 			return err
 		}
 		for _, r := range records {
-			status := ""
-			if r.Proxied {
-				status = "proxied" // 橙云代理，只读展示
-			}
 			out = append(out, provider.RecordInfo{
 				ID:       r.ID,
 				Name:     relativeName(r.Name, zone),
@@ -122,7 +118,7 @@ func (p *Provider) ListRecords(ctx context.Context, zone string) ([]provider.Rec
 				TTL:      r.TTL,
 				Priority: r.Priority,
 				Line:     "default",
-				Status:   status,
+				Proxied:  r.Proxied,
 				Remark:   r.Comment,
 			})
 		}
@@ -130,6 +126,9 @@ func (p *Provider) ListRecords(ctx context.Context, zone string) ([]provider.Rec
 	})
 	return out, err
 }
+
+// proxiableTypes 支持 CDN 代理（橙云）的记录类型。
+var proxiableTypes = map[string]bool{"A": true, "AAAA": true, "CNAME": true}
 
 // recordBody 构建创建/更新的请求体。SRV/CAA 需要结构化 data。
 func recordBody(zone string, rec provider.RecordInfo) (map[string]any, error) {
@@ -144,6 +143,13 @@ func recordBody(zone string, rec provider.RecordInfo) (map[string]any, error) {
 	}
 	if rec.TTL <= 0 {
 		body["ttl"] = 1 // Cloudflare auto TTL
+	}
+	if proxiableTypes[rec.Type] {
+		body["proxied"] = rec.Proxied
+		// Cloudflare 规则：开启代理的记录 TTL 必须为 auto（1）
+		if rec.Proxied {
+			body["ttl"] = 1
+		}
 	}
 	if rec.Remark != "" {
 		body["comment"] = rec.Remark

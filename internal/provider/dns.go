@@ -8,7 +8,7 @@ import (
 
 // ZoneInfo 托管解析 Zone 信息。
 type ZoneInfo struct {
-	Name         string `json:"name"`          // 如 example.com
+	Name         string `json:"name"` // 如 example.com
 	RecordCount  int    `json:"record_count"`
 	Remark       string `json:"remark"`
 	PunycodeName string `json:"punycode_name"` // 中文域名的 punycode 形式（无则为空）
@@ -16,15 +16,16 @@ type ZoneInfo struct {
 
 // RecordInfo 统一的解析记录信息。
 type RecordInfo struct {
-	ID       string `json:"id"`                // Provider 记录标识（阿里/腾讯为记录 ID；AWS 为编码的组合键）
-	Name     string `json:"name"`              // 主机记录：@ / www / 子域名前缀（不含 zone 后缀）
-	Type     string `json:"type"`              // A / AAAA / CNAME / TXT / MX / NS / CAA / SRV ...
-	Value    string `json:"value"`             // 记录值；多值记录以 \n 分隔
-	TTL      int    `json:"ttl"`               // 秒
-	Priority int    `json:"priority"`          // MX/SRV 优先级，无则为 0
-	Line     string `json:"line"`              // 运营商线路：default / 移动 / 联通 / 电信（仅国内厂商）
-	Status   string `json:"status"`            // 启用/暂停状态（Provider 语义，可为空）
-	Remark   string `json:"remark"`            // 备注
+	ID       string `json:"id"`       // Provider 记录标识（阿里/腾讯为记录 ID；AWS 为编码的组合键）
+	Name     string `json:"name"`     // 主机记录：@ / www / 子域名前缀（不含 zone 后缀）
+	Type     string `json:"type"`     // A / AAAA / CNAME / TXT / MX / NS / CAA / SRV ...
+	Value    string `json:"value"`    // 记录值；多值记录以 \n 分隔
+	TTL      int    `json:"ttl"`      // 秒
+	Priority int    `json:"priority"` // MX/SRV 优先级，无则为 0
+	Line     string `json:"line"`     // 运营商线路：default / 移动 / 联通 / 电信（仅国内厂商）
+	Status   string `json:"status"`   // 启用/暂停状态（Provider 语义，可为空）
+	Remark   string `json:"remark"`   // 备注
+	Proxied  bool   `json:"proxied"`  // CDN 代理状态（仅 Cloudflare 橙云：A/AAAA/CNAME 可代理）
 }
 
 // DNSProvider 解析记录管理接口。

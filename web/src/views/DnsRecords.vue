@@ -60,6 +60,18 @@
             <span v-else class="cert-na">—</span>
           </template>
         </el-table-column>
+        <el-table-column v-if="provider === 'cloudflare'" label="代理" width="100" align="center">
+          <template #default="{ row }">
+            <template v-if="proxiableTypes.includes(row.type)">
+              <el-tooltip :content="row.proxied ? '橙云已开启：流量经 Cloudflare CDN/防护，源 IP 隐藏' : '仅 DNS：直接暴露真实 IP'" placement="top">
+                <span class="proxy-state" :class="{ on: row.proxied }" @click="toggleProxy(row)">
+                  {{ row.proxied ? '☁ 已代理' : '仅 DNS' }}
+                </span>
+              </el-tooltip>
+            </template>
+            <span v-else class="proxy-na">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="TTL" prop="ttl" width="90" sortable />
         <el-table-column label="线路" prop="line" width="90" />
         <el-table-column label="优先级" prop="priority" width="80">
@@ -97,8 +109,14 @@
         <el-form-item v-if="['MX', 'SRV'].includes(form.type)" label="优先级">
           <el-input-number v-model="form.priority" :min="0" :max="65535" />
         </el-form-item>
+        <el-form-item v-if="isCF && proxiableTypes.includes(form.type)" label="CDN 代理">
+          <div class="proxy-form-row">
+            <el-switch v-model="form.proxied" active-text="橙云代理" inactive-text="仅 DNS" />
+            <span class="proxy-hint">开启后流量经 Cloudflare CDN 与防护，源 IP 隐藏，TTL 固定为自动</span>
+          </div>
+        </el-form-item>
         <el-form-item label="TTL（秒）">
-          <el-select v-model="form.ttl" style="width: 100%">
+          <el-select v-model="form.ttl" style="width: 100%" :disabled="isCF && form.proxied && proxiableTypes.includes(form.type)">
             <el-option v-for="t in ttlOptions" :key="t" :value="t" :label="t" />
           </el-select>
         </el-form-item>
@@ -271,8 +289,43 @@ const snapDiffLabel = ref('')
 const recordTypes = ['A', 'AAAA', 'CNAME', 'TXT', 'MX', 'NS', 'CAA', 'SRV']
 const ttlOptions = [60, 300, 600, 900, 1800, 3600, 7200, 86400]
 
-const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS' }[p] || p)
+const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS', cloudflare: 'Cloudflare' }[p] || p)
 const isCNProvider = computed(() => ['aliyun', 'tencent'].includes(provider.value))
+const isCF = computed(() => provider.value === 'cloudflare')
+// Cloudflare 仅这三类记录可开橙云代理
+const proxiableTypes = ['A', 'AAAA', 'CNAME']
+
+// 快捷切换橙云代理（沿用该记录其余字段做全量更新）
+const togglingProxy = ref('')
+async function toggleProxy(row) {
+  const target = !row.proxied
+  try {
+    await ElMessageBox.confirm(
+      target
+        ? `开启 ${row.name}（${row.type}）的 Cloudflare 代理？开启后源 IP 隐藏、TTL 变为自动，当前值 ${row.value} 将经 Cloudflare 回源。`
+        : `关闭 ${row.name}（${row.type}）的 Cloudflare 代理？真实源 IP 将直接对外暴露。`,
+      target ? '开启 CDN 代理' : '关闭 CDN 代理',
+      { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  togglingProxy.value = row.id
+  try {
+    await updateDNSRecord({
+      account_id: accountId.value, zone: zoneName.value, record_id: row.provider_record_id,
+      name: row.name, type: row.type, value: row.value,
+      ttl: row.ttl || 600, priority: row.priority || 0, line: row.line || 'default',
+      proxied: target,
+    })
+    ElMessage.success(target ? '已开启代理' : '已关闭代理')
+    await loadRecords()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '切换代理失败')
+  } finally {
+    togglingProxy.value = ''
+  }
+}
 
 const planCount = computed(() => {
   // 简化：本地统计与快照不一致的行数，仅作为按钮提示；准确计划由后端 diff 生成
@@ -337,7 +390,7 @@ async function syncFromCloud() {
 
 function openCreate() {
   editing.value = false
-  form.value = { name: '', type: 'A', value: '', ttl: 600, priority: 0, line: 'default' }
+  form.value = { name: '', type: 'A', value: '', ttl: 600, priority: 0, line: 'default', proxied: false }
   dialogVisible.value = true
 }
 
@@ -346,6 +399,7 @@ function openEdit(row) {
   form.value = {
     record_id: row.provider_record_id, name: row.name, type: row.type, value: row.value,
     ttl: row.ttl || 600, priority: row.priority || 0, line: row.line || 'default',
+    proxied: !!row.proxied,
   }
   dialogVisible.value = true
 }
@@ -362,6 +416,7 @@ async function saveRecord() {
       account_id: accountId.value, zone: zoneName.value,
       name: f.name, type: f.type, value: f.value,
       ttl: f.ttl, priority: f.priority, line: f.line,
+      proxied: !!f.proxied,
     }
     if (editing.value) {
       payload.record_id = f.record_id
@@ -423,6 +478,7 @@ async function openPlanDialog() {
       desired: records.value.map((r) => ({
         id: r.provider_record_id || '', name: r.name, type: r.type, value: r.value,
         ttl: r.ttl || 600, priority: r.priority || 0, line: r.line || '',
+        proxied: !!r.proxied,
       })),
     })
     planActions.value = res.data || []
@@ -594,6 +650,30 @@ async function restoreFrom(row) {
 }
 .cert-na {
   color: var(--el-text-color-placeholder);
+}
+.proxy-state {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  border-bottom: 1px dashed var(--el-border-color);
+  padding-bottom: 1px;
+}
+.proxy-state.on {
+  color: #f80;
+  font-weight: 600;
+}
+.proxy-na {
+  color: var(--el-text-color-placeholder);
+}
+.proxy-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proxy-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
 }
 .plan-alert {
   margin-bottom: 12px;

@@ -114,8 +114,11 @@ func TestListZonesAndRecords(t *testing.T) {
 	if records[0].Name != "@" || records[0].Value != "1.2.3.4" {
 		t.Fatalf("apex 记录映射错误: %+v", records[0])
 	}
-	if records[1].Status != "proxied" || records[1].TTL != 1 {
+	if !records[1].Proxied || records[1].TTL != 1 {
 		t.Fatalf("proxied 记录映射错误: %+v", records[1])
+	}
+	if records[0].Proxied {
+		t.Fatalf("未代理记录 Proxied 应为 false: %+v", records[0])
 	}
 	if records[2].Priority != 10 || records[2].Value != "mail.example.com" {
 		t.Fatalf("MX 优先级映射错误: %+v", records[2])
@@ -153,6 +156,71 @@ func TestCreateRecordMXBody(t *testing.T) {
 	}
 	if body["priority"].(float64) != 20 {
 		t.Fatalf("MX 优先级错误: %v", body["priority"])
+	}
+}
+
+func TestCreateRecordProxiedBody(t *testing.T) {
+	m := newMockCF(t, func(w http.ResponseWriter, r *http.Request, path string) {
+		switch {
+		case strings.HasPrefix(path, "/zones") && r.URL.Query().Get("name") != "":
+			writeEnvelope(w, []map[string]any{{"id": "z1", "name": "example.com"}})
+		case strings.HasPrefix(path, "/zones/z1/dns_records") && r.Method == http.MethodPost:
+			writeEnvelope(w, map[string]any{"id": "new-id"})
+		default:
+			writeEnvelope(w, []any{})
+		}
+	})
+	p := &Provider{cred: provider.Credential{AccessKey: "tok"}}
+
+	// 开启代理：proxied=true，TTL 强制 auto(1)
+	_, err := p.CreateRecord(context.Background(), "example.com", provider.RecordInfo{
+		Name: "www", Type: "A", Value: "1.2.3.4", TTL: 600, Proxied: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(proxied) 失败: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(m.bodies[len(m.bodies)-1]), &body); err != nil {
+		t.Fatalf("请求体解析失败: %v", err)
+	}
+	if body["proxied"] != true {
+		t.Fatalf("proxied 应为 true: %v", body["proxied"])
+	}
+	if body["ttl"].(float64) != 1 {
+		t.Fatalf("代理记录 TTL 应强制为 auto(1): %v", body["ttl"])
+	}
+
+	// DNS only：proxied=false 也要显式传（避免保留云端旧状态）
+	_, err = p.CreateRecord(context.Background(), "example.com", provider.RecordInfo{
+		Name: "@", Type: "A", Value: "1.2.3.4", TTL: 300,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(dns only) 失败: %v", err)
+	}
+	body = map[string]any{} // 注意：Unmarshal 对已有 map 是合并语义，必须重置
+	if err := json.Unmarshal([]byte(m.bodies[len(m.bodies)-1]), &body); err != nil {
+		t.Fatalf("请求体解析失败: %v", err)
+	}
+	if body["proxied"] != false {
+		t.Fatalf("proxied 应为 false: %v", body["proxied"])
+	}
+	if body["ttl"].(float64) != 300 {
+		t.Fatalf("DNS only 记录 TTL 不应被改写: %v", body["ttl"])
+	}
+
+	// 不可代理类型（TXT）：不应携带 proxied 字段
+	_, err = p.CreateRecord(context.Background(), "example.com", provider.RecordInfo{
+		Name: "_test", Type: "TXT", Value: "hello", TTL: 300,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord(TXT) 失败: %v", err)
+	}
+	body = map[string]any{}
+	if err := json.Unmarshal([]byte(m.bodies[len(m.bodies)-1]), &body); err != nil {
+		t.Fatalf("请求体解析失败: %v", err)
+	}
+	if _, ok := body["proxied"]; ok {
+		t.Fatalf("TXT 记录不应携带 proxied 字段: %v", body)
 	}
 }
 

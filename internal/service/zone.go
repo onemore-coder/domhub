@@ -174,6 +174,7 @@ func (s *ZoneService) SyncRecordsFor(accountID uint, zone string) (int, error) {
 			Line:             r.Line,
 			Status:           r.Status,
 			Remark:           r.Remark,
+			Proxied:          r.Proxied,
 			SyncedAt:         now,
 		})
 	}
