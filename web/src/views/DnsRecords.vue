@@ -7,7 +7,8 @@
         <el-tag v-if="accountName" size="small" effect="plain" type="info">
           {{ accountName }} · {{ providerLabel(provider) }}
         </el-tag>
-        <el-button :icon="Refresh" :loading="recordsLoading" @click="loadRecords">刷新</el-button>
+        <span class="sync-hint" v-if="syncedAtLabel">镜像同步于 {{ syncedAtLabel }}</span>
+        <el-button :icon="Refresh" :loading="syncing" @click="syncFromCloud">同步云端</el-button>
         <div class="spacer" />
         <el-button type="primary" :icon="Plus" @click="openCreate">添加记录</el-button>
         <el-button type="success" plain :disabled="!changed" @click="openPlanDialog">
@@ -43,6 +44,20 @@
         <el-table-column label="记录值" min-width="260">
           <template #default="{ row }">
             <span class="record-value">{{ row.value }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="证书" width="90" align="center">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="row.cert_days !== undefined && row.cert_days !== null"
+              :content="row.cert_ok ? `HTTPS 证书剩余约 ${row.cert_days} 天` : '证书检查异常'"
+              placement="top"
+            >
+              <el-tag size="small" :type="!row.cert_ok ? 'danger' : row.cert_days <= 30 ? 'warning' : 'success'">
+                {{ row.cert_ok ? `${row.cert_days}天` : '异常' }}
+              </el-tag>
+            </el-tooltip>
+            <span v-else class="cert-na">—</span>
           </template>
         </el-table-column>
         <el-table-column label="TTL" prop="ttl" width="90" sortable />
@@ -199,7 +214,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Back, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
-  listAccounts, listDNSRecords,
+  listAccounts, listDNSRecordsCached, syncDNSRecords,
   createDNSRecord, updateDNSRecord, deleteDNSRecord,
   planDNS, pushDNS,
   listSnapshots, captureSnapshot, diffSnapshots, restorePlan,
@@ -218,6 +233,13 @@ const provider = ref('')
 const recordsLoading = ref(false)
 const records = ref([])
 const snapshot = ref([]) // 现网快照，用于本地变更计数
+const syncedAt = ref('')
+const syncing = ref(false)
+
+const syncedAtLabel = computed(() => {
+  if (!syncedAt.value) return ''
+  return String(syncedAt.value).replace('T', ' ').slice(5, 16)
+})
 
 const nameFilter = ref('')
 const typeFilter = ref('')
@@ -288,13 +310,28 @@ onMounted(async () => {
 async function loadRecords() {
   recordsLoading.value = true
   try {
-    const res = await listDNSRecords(accountId.value, zoneName.value)
-    records.value = res.data || []
+    const res = await listDNSRecordsCached(accountId.value, zoneName.value)
+    records.value = res.data?.items || []
+    syncedAt.value = res.data?.synced_at || ''
     snapshot.value = records.value.map((r) => ({ ...r }))
   } catch (e) {
-    ElMessage.error(e.response?.data?.message || '拉取解析记录失败')
+    ElMessage.error(e.response?.data?.message || '读取解析记录失败')
   } finally {
     recordsLoading.value = false
+  }
+}
+
+// 从云端回源刷新本地镜像（页面展示数据来自镜像，需手动拉取云端最新）
+async function syncFromCloud() {
+  syncing.value = true
+  try {
+    await syncDNSRecords(accountId.value, zoneName.value)
+    await loadRecords()
+    ElMessage.success('已与云端同步')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '同步失败')
+  } finally {
+    syncing.value = false
   }
 }
 
@@ -307,7 +344,7 @@ function openCreate() {
 function openEdit(row) {
   editing.value = true
   form.value = {
-    record_id: row.id, name: row.name, type: row.type, value: row.value,
+    record_id: row.provider_record_id, name: row.name, type: row.type, value: row.value,
     ttl: row.ttl || 600, priority: row.priority || 0, line: row.line || 'default',
   }
   dialogVisible.value = true
@@ -367,7 +404,7 @@ async function removeRecord(row) {
   try {
     await deleteDNSRecord({
       account_id: accountId.value, zone: zoneName.value,
-      record_id: row.id, desc: `${row.type} ${row.name}`,
+      record_id: row.provider_record_id, desc: `${row.type} ${row.name}`,
     })
     ElMessage.success('记录已删除')
     await loadRecords()
@@ -384,7 +421,7 @@ async function openPlanDialog() {
       account_id: accountId.value,
       zone: zoneName.value,
       desired: records.value.map((r) => ({
-        id: r.id || '', name: r.name, type: r.type, value: r.value,
+        id: r.provider_record_id || '', name: r.name, type: r.type, value: r.value,
         ttl: r.ttl || 600, priority: r.priority || 0, line: r.line || '',
       })),
     })
@@ -550,6 +587,13 @@ async function restoreFrom(row) {
 .filter-count {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.sync-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.cert-na {
+  color: var(--el-text-color-placeholder);
 }
 .plan-alert {
   margin-bottom: 12px;

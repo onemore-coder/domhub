@@ -86,12 +86,28 @@
           </div>
         </div>
       </template>
-      <div class="cert-summary">监控对象为各主域及其解析记录中的子域名（A/AAAA/CNAME，来源为快照或实时拉取），每天 08:00 自动检查</div>
+      <div class="cert-toolbar">
+        <div class="cert-stats">
+          <span>共 {{ certStats.total }} 个主机</span>
+          <el-tag size="small" type="success" effect="plain">健康 {{ certStats.healthy }}</el-tag>
+          <el-tag size="small" type="warning" effect="plain">待续期 {{ certStats.expiring }}</el-tag>
+          <el-tag size="small" type="danger" effect="plain">异常 {{ certStats.errors }}</el-tag>
+        </div>
+        <el-switch
+          v-model="certAttentionOnly" size="small"
+          active-text="仅看需关注" inactive-text="显示全部"
+        />
+      </div>
+      <div class="cert-summary">监控对象为各主域及其解析记录（A/AAAA/CNAME）中的子域名，镜像每日校准、证书每天 08:00 自动检查</div>
       <el-empty
         v-if="!certs.length && !loading" description="尚未检查，点击「立即检查」自动发现并探测各主机名的 HTTPS 证书"
         :image-size="60"
       />
-      <el-table v-else v-loading="certChecking" :data="certs" stripe size="small">
+      <el-empty
+        v-else-if="!displayCerts.length" description="没有需要关注的证书，全部健康"
+        :image-size="60"
+      />
+      <el-table v-else v-loading="certChecking" :data="displayCerts" stripe size="small">
         <el-table-column prop="host" label="主机" min-width="200" />
         <el-table-column label="来源" width="80">
           <template #default="{ row }">
@@ -241,6 +257,23 @@ const logs = ref([])
 const certs = ref([])
 const certChecking = ref(false)
 const newHost = ref('')
+
+// 证书卡片默认只展示需关注项（即将到期或异常），健康的只计入总数
+const certAttentionOnly = ref(true)
+const certStats = computed(() => {
+  const active = certs.value.filter((c) => !c.excluded)
+  return {
+    total: active.length,
+    healthy: active.filter((c) => c.ok && c.days_left > 30).length,
+    expiring: active.filter((c) => c.ok && c.days_left <= 30).length,
+    errors: active.filter((c) => !c.ok).length,
+  }
+})
+const displayCerts = computed(() => {
+  const active = certs.value.filter((c) => !c.excluded)
+  if (!certAttentionOnly.value) return active
+  return active.filter((c) => !c.ok || c.days_left <= 30)
+})
 
 const channelDialog = ref(false)
 const channelForm = ref({ id: 0, name: '', type: 'webhook', config: '', enabled: true })
@@ -493,6 +526,19 @@ onMounted(load)
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+.cert-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cert-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
 }
 .cert-checked {
   font-size: 12px;

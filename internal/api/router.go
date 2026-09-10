@@ -52,12 +52,19 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
 	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo, grantRepo)
-	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), grantRepo, dnsSvc)
+	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), repo.NewDnsRecordRepo(db), grantRepo, dnsSvc)
+	// 云端写成功后回源刷新该 Zone 的解析记录镜像（云端优先，失败不影响操作结果）
+	dnsSvc.OnChange = func(accountID uint, zone string) {
+		if _, err := zoneSvc.SyncRecordsFor(accountID, zone); err != nil {
+			logger.L().Warn("刷新解析记录镜像失败",
+				zap.Uint("account", accountID), zap.String("zone", zone), zap.Error(err))
+		}
+	}
 	userSvc := service.NewUserService(repo.NewUserRepo(db), grantRepo, auditRepo)
 	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
 	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
 	tokenSvc := service.NewTokenService(repo.NewApiTokenRepo(db), repo.NewUserRepo(db))
-	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo, repo.NewSnapshotRepo(db), repo.NewZoneRepo(db), dnsSvc)
+	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo, repo.NewDnsRecordRepo(db))
 	if scheduleApplier != nil {
 		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
 	}
@@ -65,7 +72,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
 	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
 	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
-	dnsH := handler.NewDNSHandler(dnsSvc)
+	dnsH := handler.NewDNSHandler(dnsSvc, zoneSvc, certSvc)
 	auditH := handler.NewAuditHandler(auditRepo)
 	userH := handler.NewUserHandler(userSvc, authSvc)
 	snapshotH := handler.NewSnapshotHandler(snapshotSvc)
@@ -151,9 +158,11 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	protected.DELETE("/certs/:id", writeAccess, certH.Delete)
 
 	// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
-	// zones 走本地缓存（秒开），refresh 回源厂商 API；记录操作仍实时
+	// zones/records 走本地镜像（秒开），sync 回源厂商 API；记录操作仍实时
 	protected.GET("/dns/zones", zoneH.ListCached)
 	protected.POST("/dns/zones/refresh", writeAccess, zoneH.Refresh)
+	protected.GET("/dns/records-cached", dnsH.ListCached)
+	protected.POST("/dns/records/sync", writeAccess, dnsH.SyncRecords)
 	protected.GET("/dns/records", dnsH.ListRecords)
 	protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)
 	protected.PUT("/dns/records", writeAccess, dnsH.UpdateRecord)

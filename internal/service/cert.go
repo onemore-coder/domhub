@@ -14,28 +14,25 @@ import (
 	"github.com/domhub-io/domhub/internal/model"
 	"github.com/domhub-io/domhub/internal/pkg/logger"
 	"github.com/domhub-io/domhub/internal/pkg/notify"
-	"github.com/domhub-io/domhub/internal/provider"
 	"github.com/domhub-io/domhub/internal/repo"
 )
 
-// CertService SSL 证书监控：发现主机名（主域 apex + 解析记录/快照中的子域名），
+// CertService SSL 证书监控：发现主机名（注册域 apex + 解析记录镜像中的子域名），
 // TLS 拨测读取证书到期时间，按 cert_expire 规则告警。
 //
-// 子域名不单独建存储：以 domains 表（kind=domain/zone）为骨架，
-// 主机名优先从最新解析快照提取，快照缺失时实时拉一次记录兜底；
-// 发现结果落在 cert_statuses（host 唯一），支持手动添加与排除。
+// 子域名不单独建存储：主机名直接来自 dns_records 本地镜像（A/AAAA/CNAME），
+// 镜像由 sync_records 任务与变更回调保持新鲜；发现结果落在
+// cert_statuses（host 唯一），支持手动添加与排除。
 type CertService struct {
 	certs   *repo.CertRepo
 	domains *repo.DomainRepo
 	rules   *repo.AlertRepo
-	snaps   *repo.SnapshotRepo
-	zones   *repo.ZoneRepo
-	dns     *DNSService
+	records *repo.DnsRecordRepo
 }
 
 func NewCertService(certs *repo.CertRepo, domains *repo.DomainRepo, rules *repo.AlertRepo,
-	snaps *repo.SnapshotRepo, zones *repo.ZoneRepo, dns *DNSService) *CertService {
-	return &CertService{certs: certs, domains: domains, rules: rules, snaps: snaps, zones: zones, dns: dns}
+	records *repo.DnsRecordRepo) *CertService {
+	return &CertService{certs: certs, domains: domains, rules: rules, records: records}
 }
 
 // certTarget 一个待探测的主机名。
@@ -63,8 +60,7 @@ func probeCert(host string) (notAfter time.Time, issuer, subject string, err err
 
 // discoverHosts 汇总监控目标：
 //   - 注册域（kind=domain）→ apex 主机名
-//   - 托管 Zone（kind=zone）→ 最新快照中的 A/AAAA/CNAME 主机名；
-//     无快照时实时拉取一次记录（证书检查每天一次，API 成本可控）
+//   - 解析记录镜像（dns_records）→ A/AAAA/CNAME 主机名（跳过 * 与 _ 前缀）
 func (s *CertService) discoverHosts(ctx context.Context) ([]certTarget, error) {
 	seen := make(map[string]struct{})
 	targets := make([]certTarget, 0, 16)
@@ -89,53 +85,29 @@ func (s *CertService) discoverHosts(ctx context.Context) ([]certTarget, error) {
 		add(certTarget{host: d.Name, domainID: d.ID, domainName: d.Name})
 	}
 
-	// 2) Zone 下的子域名（Zone 清单来自元数据缓存表）
-	zones, err := s.zones.ListViews()
+	// 2) 解析记录镜像中的子域名（本地查询，零 API 成本）
+	rows, err := s.records.CertHostRows()
 	if err != nil {
 		return nil, err
 	}
-	for _, z := range zones {
+	for _, row := range rows {
 		select {
 		case <-ctx.Done():
 			return targets, ctx.Err()
 		default:
 		}
-		records, source := s.zoneRecords(z.CloudAccountID, z.Name)
-		logger.L().Debug("证书监控子域名发现",
-			zap.String("zone", z.Name), zap.Int("records", len(records)), zap.String("source", source))
-		for _, rec := range records {
-			host := hostFromRecord(rec.Name, z.Name)
-			if host == "" {
-				continue
-			}
-			add(certTarget{host: host, domainName: z.Name})
+		host := CertHost(row.Name, row.ZoneName)
+		if host == "" {
+			continue
 		}
+		add(certTarget{host: host, domainName: row.ZoneName})
 	}
 	return targets, nil
 }
 
-// zoneRecords 获取 Zone 的解析记录：优先最新快照，缺失则实时拉取。
-// 返回记录与来源（snapshot/live），失败返回空。
-func (s *CertService) zoneRecords(accountID uint, zone string) ([]provider.RecordInfo, string) {
-	if snap, err := s.snaps.Latest(accountID, zone); err == nil && snap != nil {
-		var records []provider.RecordInfo
-		if err := json.Unmarshal([]byte(snap.RecordJSON), &records); err == nil {
-			return records, "snapshot"
-		}
-	}
-	// 兜底：实时拉一次（系统身份）
-	records, err := s.dns.ListRecords(accountID, zone,
-		Actor{Role: model.RoleAdmin, Username: "cert-check"})
-	if err != nil {
-		logger.L().Warn("证书监控拉取解析记录失败", zap.String("zone", zone), zap.Error(err))
-		return nil, "error"
-	}
-	return records, "live"
-}
-
-// hostFromRecord 把记录主机名转换为完整域名。
+// CertHost 把记录主机名转换为完整域名。
 // 过滤规则：@ → zone 本身；* 泛解析与 _ 开头（_acme-challenge 等）跳过。
-func hostFromRecord(name, zone string) string {
+func CertHost(name, zone string) string {
 	name = strings.TrimSpace(name)
 	if name == "" || name == "*" || strings.HasPrefix(name, "_") {
 		return ""
@@ -148,6 +120,21 @@ func hostFromRecord(name, zone string) string {
 		return name
 	}
 	return name + "." + zone
+}
+
+// MapByZone 返回某 Zone 关联主机的证书状态（host → status），供记录列表关联展示。
+func (s *CertService) MapByZone(zone string) map[string]model.CertStatus {
+	all, err := s.certs.List()
+	if err != nil {
+		return nil
+	}
+	out := make(map[string]model.CertStatus)
+	for _, cs := range all {
+		if cs.Host == zone || strings.HasSuffix(cs.Host, "."+zone) {
+			out[cs.Host] = cs
+		}
+	}
+	return out
 }
 
 // ListStatus 返回全部主机名的证书状态（供列表页展示）。

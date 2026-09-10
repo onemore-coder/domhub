@@ -15,11 +15,12 @@ import (
 
 // Job 名称常量（对应 system_settings 的 key）。
 const (
-	JobExpiryCheck = "expiry_check" // 域名到期检查
-	JobSyncDomains = "sync_domains" // 域名台账自动同步
-	JobDriftCheck  = "drift_check"  // DNS 漂移检测
-	JobSyncZones   = "sync_zones"   // 托管域名元数据缓存刷新
-	JobCertCheck   = "cert_check"   // SSL 证书到期检查
+	JobExpiryCheck  = "expiry_check"  // 域名到期检查
+	JobSyncDomains  = "sync_domains"  // 域名台账自动同步
+	JobDriftCheck   = "drift_check"   // DNS 漂移检测
+	JobSyncZones    = "sync_zones"    // 托管域名元数据缓存刷新
+	JobSyncRecords  = "sync_records"  // 解析记录镜像刷新
+	JobCertCheck    = "cert_check"    // SSL 证书到期检查
 )
 
 // Scheduler 定时任务调度器。
@@ -87,6 +88,16 @@ func (s *Scheduler) jobFunc(name string) func() {
 			}
 			logger.L().Info("Zone 缓存刷新完成",
 				zap.Int("accounts", accs), zap.Int("zones", zones))
+		}
+	case JobSyncRecords:
+		return func() {
+			zones, records, err := s.runners.ZoneSvc.SyncAllRecords(0)
+			if err != nil {
+				logger.L().Error("解析记录镜像同步任务失败", zap.Error(err))
+				return
+			}
+			logger.L().Info("解析记录镜像同步完成",
+				zap.Int("zones", zones), zap.Int("records", records))
 		}
 	case JobCertCheck:
 		return func() {

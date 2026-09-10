@@ -36,6 +36,8 @@ export const listAlertLogs = (limit = 50) => http.get('/alerts/logs', { params: 
 export const listDNSZones = () => http.get('/dns/zones') // 走本地缓存，秒开
 export const refreshDNSZones = (accountId = 0) => http.post('/dns/zones/refresh', { account_id: accountId })
 export const listDNSRecords = (accountId, zone) => http.get('/dns/records', { params: { account_id: accountId, zone } })
+export const listDNSRecordsCached = (accountId, zone) => http.get('/dns/records-cached', { params: { account_id: accountId, zone } })
+export const syncDNSRecords = (accountId, zone) => http.post('/dns/records/sync', { account_id: accountId, zone })
 export const createDNSRecord = (data) => http.post('/dns/records', data)
 export const updateDNSRecord = (data) => http.put('/dns/records', data)
 export const deleteDNSRecord = (data) => http.delete('/dns/records', { data })

@@ -2,21 +2,25 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/domhub-io/domhub/internal/api/middleware"
+	"github.com/domhub-io/domhub/internal/model"
 	"github.com/domhub-io/domhub/internal/provider"
 	"github.com/domhub-io/domhub/internal/service"
 )
 
 // DNSHandler 解析管理接口。
 type DNSHandler struct {
-	dnsSvc *service.DNSService
+	dnsSvc  *service.DNSService
+	zoneSvc *service.ZoneService // 解析记录镜像（列表/同步）
+	certSvc *service.CertService // 记录关联展示证书状态
 }
 
-func NewDNSHandler(dnsSvc *service.DNSService) *DNSHandler {
-	return &DNSHandler{dnsSvc: dnsSvc}
+func NewDNSHandler(dnsSvc *service.DNSService, zoneSvc *service.ZoneService, certSvc *service.CertService) *DNSHandler {
+	return &DNSHandler{dnsSvc: dnsSvc, zoneSvc: zoneSvc, certSvc: certSvc}
 }
 
 func ctxActor(c *gin.Context) service.Actor {
@@ -40,6 +44,75 @@ func (h *DNSHandler) ListZones(c *gin.Context) {
 		zones = []provider.ZoneInfo{}
 	}
 	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": zones})
+}
+
+// ListCached GET /api/v1/dns/records-cached?account_id=1&zone=example.com
+// 读取本地镜像（秒开）；A/AAAA/CNAME 记录关联返回主机证书剩余天数。
+func (h *DNSHandler) ListCached(c *gin.Context) {
+	accountID, _ := strconv.ParseUint(c.Query("account_id"), 10, 64)
+	zone := c.Query("zone")
+	if accountID == 0 || zone == "" {
+		c.JSON(400, gin.H{"code": 400, "message": "缺少 account_id 或 zone"})
+		return
+	}
+	records, err := h.zoneSvc.ListRecordsCached(ctxActor(c), uint(accountID), zone, "", "", 0)
+	if err != nil {
+		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
+		return
+	}
+	// 关联证书状态：主机名 → 剩余天数（仅 A/AAAA/CNAME 且有检查结果的行）
+	certMap := h.certSvc.MapByZone(zone)
+	type recordItem struct {
+		model.DnsRecord
+		CertOK   bool `json:"cert_ok"`
+		CertDays *int `json:"cert_days"`
+	}
+	items := make([]recordItem, 0, len(records))
+	var lastSync time.Time
+	for _, r := range records {
+		item := recordItem{DnsRecord: r}
+		if r.SyncedAt.After(lastSync) {
+			lastSync = r.SyncedAt
+		}
+		if r.Type == "A" || r.Type == "AAAA" || r.Type == "CNAME" {
+			if cs, ok := certMap[service.CertHost(r.Name, zone)]; ok && !cs.Excluded {
+				days := cs.DaysLeft
+				item.CertOK = cs.OK
+				item.CertDays = &days
+			}
+		}
+		items = append(items, item)
+	}
+	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": gin.H{
+		"items":     items,
+		"synced_at": lastSync,
+	}})
+}
+
+// SyncRecords POST /api/v1/dns/records/sync {"account_id":1,"zone":"example.com"}
+// 从云端回源刷新该 Zone 的记录镜像。
+func (h *DNSHandler) SyncRecords(c *gin.Context) {
+	var req struct {
+		AccountID uint   `json:"account_id"`
+		Zone      string `json:"zone"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.AccountID == 0 || req.Zone == "" {
+		c.JSON(400, gin.H{"code": 400, "message": "需要 account_id 与 zone"})
+		return
+	}
+	if ok, err := h.zoneSvc.CheckZoneAccess(ctxActor(c), req.AccountID, req.Zone); err != nil {
+		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
+		return
+	} else if !ok {
+		c.JSON(403, gin.H{"code": 403, "message": "无权访问该域名（需要管理员授权）"})
+		return
+	}
+	n, err := h.zoneSvc.SyncRecordsFor(req.AccountID, req.Zone)
+	if err != nil {
+		c.JSON(httpCode(err), gin.H{"code": httpCode(err), "message": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": gin.H{"records": n}})
 }
 
 // ListRecords GET /api/v1/dns/records?account_id=1&zone=example.com

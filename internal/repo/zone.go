@@ -66,3 +66,10 @@ func (r *ZoneRepo) CountByAccount(accountID uint) (int64, error) {
 	err := r.db.Model(&model.Zone{}).Where("cloud_account_id = ?", accountID).Count(&n).Error
 	return n, err
 }
+
+// TouchRecordCount 记录镜像同步后回写 Zone 的记录数与同步时间。
+func (r *ZoneRepo) TouchRecordCount(accountID uint, zone string, count int, at time.Time) error {
+	return r.db.Model(&model.Zone{}).
+		Where("cloud_account_id = ? AND name = ?", accountID, zone).
+		Updates(map[string]any{"record_count": count, "synced_at": at}).Error
+}

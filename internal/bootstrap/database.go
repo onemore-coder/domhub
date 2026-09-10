@@ -63,6 +63,7 @@ func InitDB(cfg *config.Config) *gorm.DB {
 		&model.SystemSetting{},
 		&model.UserZone{},
 		&model.Zone{},
+		&model.DnsRecord{},
 		&model.CertStatus{},
 		&model.ApiToken{},
 	); err != nil {

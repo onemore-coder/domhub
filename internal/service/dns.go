@@ -33,6 +33,10 @@ type DNSService struct {
 	cipher   *cryptox.Cipher
 	audit    *repo.AuditRepo
 	grants   *repo.GrantRepo
+
+	// OnChange 变更成功后的回调（回源刷新本地解析记录镜像），由路由层注入。
+	// 云端优先：只在云端写成功后触发；回调内部失败不影响本次操作结果。
+	OnChange func(accountID uint, zone string)
 }
 
 func NewDNSService(accounts *repo.CloudAccountRepo, cipher *cryptox.Cipher, audit *repo.AuditRepo, grants *repo.GrantRepo) *DNSService {
@@ -149,6 +153,9 @@ func (s *DNSService) CreateRecord(accountID uint, zone string, rec provider.Reco
 	defer cancel()
 	id, err := p.CreateRecord(ctx, zone, rec)
 	s.writeAudit(op.ID, op.Username, "dns.create", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
+	if err == nil {
+		s.notifyChange(accountID, zone)
+	}
 	return id, err
 }
 
@@ -174,6 +181,9 @@ func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.Reco
 	defer cancel()
 	err = p.UpdateRecord(ctx, zone, rec)
 	s.writeAudit(op.ID, op.Username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
+	if err == nil {
+		s.notifyChange(accountID, zone)
+	}
 	return err
 }
 
@@ -199,6 +209,9 @@ func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, o
 		desc = recordID
 	}
 	s.writeAudit(op.ID, op.Username, "dns.delete", a.Provider+"/"+zone+"/"+desc, map[string]string{"record_id": recordID}, err)
+	if err == nil {
+		s.notifyChange(accountID, zone)
+	}
 	return err
 }
 
@@ -362,7 +375,20 @@ func (s *DNSService) Push(accountID uint, zone string, actions []PlanAction, op 
 			a.Provider+"/"+zone+"/"+act.Record.Type+" "+act.Record.Name, act.Record, err)
 		results = append(results, res)
 	}
+	for _, res := range results {
+		if res.Success {
+			s.notifyChange(accountID, zone)
+			break
+		}
+	}
 	return results, nil
+}
+
+// notifyChange 触发镜像刷新回调（单 Zone 回源，失败不影响本次操作）。
+func (s *DNSService) notifyChange(accountID uint, zone string) {
+	if s.OnChange != nil {
+		s.OnChange(accountID, zone)
+	}
 }
 
 // writeAudit 记录审计日志（失败不阻断业务）。
