@@ -124,6 +124,8 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	{
 		channelGroup.GET("", alertH.ListChannels)
 		channelGroup.POST("", adminOnly, alertH.CreateChannel)
+		channelGroup.POST("/test", writeAccess, alertH.TestChannel)
+		channelGroup.POST("/:id/test", writeAccess, alertH.TestChannelByID)
 		channelGroup.PUT("/:id", adminOnly, alertH.UpdateChannel)
 		channelGroup.DELETE("/:id", adminOnly, alertH.DeleteChannel)
 	}

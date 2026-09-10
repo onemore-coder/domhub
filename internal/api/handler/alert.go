@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/domhub-io/domhub/internal/model"
+	"github.com/domhub-io/domhub/internal/pkg/notify"
 	"github.com/domhub-io/domhub/internal/repo"
 	"github.com/domhub-io/domhub/internal/service"
 )
@@ -87,6 +88,54 @@ func (h *AlertHandler) DeleteChannel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok"})
+}
+
+// TestChannelPayload 测试发送的请求体。
+type TestChannelPayload struct {
+	Type   string `json:"type"`
+	Config string `json:"config"`
+}
+
+// sendTest 用给定渠道类型/配置发送一条测试消息，返回错误（nil 表示成功）。
+func sendTest(chType, config string) error {
+	n, err := notify.Build(chType, config)
+	if err != nil {
+		return err
+	}
+	return n.Send("DomHub 测试消息", "这是一条来自 DomHub 的渠道测试消息，收到即表示渠道配置有效。")
+}
+
+// TestChannelByID POST /api/v1/channels/:id/test —— 用已保存配置发送测试消息。
+func (h *AlertHandler) TestChannelByID(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "ID 非法"})
+		return
+	}
+	ch, err := h.alertRepo.FindChannel(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "渠道不存在"})
+		return
+	}
+	if err := sendTest(ch.Type, ch.Config); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 1, "message": "发送失败：" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "测试消息已发送，请查收"})
+}
+
+// TestChannel POST /api/v1/channels/test —— 保存前用表单配置发送测试消息。
+func (h *AlertHandler) TestChannel(c *gin.Context) {
+	var req TestChannelPayload
+	if err := c.ShouldBindJSON(&req); err != nil || req.Type == "" || req.Config == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 400, "message": "参数错误：type/config 必填"})
+		return
+	}
+	if err := sendTest(req.Type, req.Config); err != nil {
+		c.JSON(http.StatusOK, gin.H{"code": 1, "message": "发送失败：" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "测试消息已发送，请查收"})
 }
 
 // ---- 规则 ----

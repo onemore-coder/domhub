@@ -20,8 +20,9 @@
             <el-tag size="small" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
+            <el-button size="small" :loading="testingId === row.id" @click="doTestChannel(row)">测试</el-button>
             <el-button size="small" @click="openChannelDialog(row)">编辑</el-button>
             <el-button size="small" type="danger" plain @click="doDeleteChannel(row)">删除</el-button>
           </template>
@@ -101,6 +102,7 @@
       </el-form>
       <template #footer>
         <el-button @click="channelDialog = false">取消</el-button>
+        <el-button :loading="testingForm" @click="doTestChannelForm">发送测试</el-button>
         <el-button type="primary" @click="saveChannel">保存</el-button>
       </template>
     </el-dialog>
@@ -141,6 +143,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   listChannels, createChannel, updateChannel, deleteChannel,
+  testChannel, testChannelByID,
   listRules, createRule, updateRule, deleteRule,
   runAlertCheck, listAlertLogs,
 } from '../api/domhub'
@@ -161,6 +164,8 @@ const logs = ref([])
 
 const channelDialog = ref(false)
 const channelForm = ref({ id: 0, name: '', type: 'webhook', config: '', enabled: true })
+const testingId = ref(0)
+const testingForm = ref(false)
 
 const ruleDialog = ref(false)
 const ruleForm = ref({ id: 0, name: '', offsetList: [60, 30, 7, 1], channelIdList: [], enabled: true })
@@ -202,6 +207,35 @@ function openChannelDialog(row) {
     channelForm.value = { id: 0, name: '', type: 'webhook', config: '', enabled: true }
   }
   channelDialog.value = true
+}
+
+async function doTestChannel(row) {
+  testingId.value = row.id
+  try {
+    const res = await testChannelByID(row.id)
+    res.code === 0 ? ElMessage.success(res.message) : ElMessage.error(res.message)
+  } catch {
+    // 拦截器已弹出错误提示
+  } finally {
+    testingId.value = 0
+  }
+}
+
+async function doTestChannelForm() {
+  const f = channelForm.value
+  if (!f.config) {
+    ElMessage.warning('请先填写渠道配置')
+    return
+  }
+  testingForm.value = true
+  try {
+    const res = await testChannel({ type: f.type, config: f.config })
+    res.code === 0 ? ElMessage.success(res.message) : ElMessage.error(res.message)
+  } catch {
+    // 拦截器已弹出错误提示
+  } finally {
+    testingForm.value = false
+  }
 }
 
 async function saveChannel() {
