@@ -40,6 +40,16 @@ func InitDB(cfg *config.Config) *gorm.DB {
 		panic("数据库连接失败: " + err.Error())
 	}
 
+	// 一次性迁移：cert_statuses 旧结构按 domain_id 唯一（仅主域监控），
+	// 升级为按 host 唯一（含子域名）需重建；旧状态数据由下次检查重新探测生成
+	if db.Migrator().HasTable(&model.CertStatus{}) && !db.Migrator().HasColumn(&model.CertStatus{}, "host") {
+		if err := db.Migrator().DropTable(&model.CertStatus{}); err != nil {
+			applog.L().Warn("旧证书状态表清理失败", zap.Error(err))
+		} else {
+			applog.L().Info("cert_statuses 已升级为主机名粒度，旧状态将在下次检查时重建")
+		}
+	}
+
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.CloudAccount{},

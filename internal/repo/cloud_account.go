@@ -186,6 +186,23 @@ func (r *DomainRepo) ListWithExpiry() ([]model.Domain, error) {
 	return list, err
 }
 
+// ListAllByKind 按类型查询全部域名/Zone（供证书监控做主机名发现）。
+func (r *DomainRepo) ListAllByKind(kind string) ([]model.Domain, error) {
+	var list []model.Domain
+	err := r.db.Where("kind = ?", kind).Find(&list).Error
+	return list, err
+}
+
+// FindByID 按主键查询单个域名/Zone。
+func (r *DomainRepo) FindByID(id uint) (*model.Domain, error) {
+	var d model.Domain
+	err := r.db.First(&d, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
 // DeleteByAccount 删除某账号下的全部域名。
 func (r *DomainRepo) DeleteByAccount(accountID uint) error {
 	return r.db.Where("cloud_account_id = ?", accountID).Delete(&model.Domain{}).Error

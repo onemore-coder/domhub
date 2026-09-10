@@ -14,26 +14,43 @@ import (
 	"github.com/domhub-io/domhub/internal/model"
 	"github.com/domhub-io/domhub/internal/pkg/logger"
 	"github.com/domhub-io/domhub/internal/pkg/notify"
+	"github.com/domhub-io/domhub/internal/provider"
 	"github.com/domhub-io/domhub/internal/repo"
 )
 
-// CertService SSL 证书监控：TLS 拨测获取证书到期时间，按规则告警。
+// CertService SSL 证书监控：发现主机名（主域 apex + 解析记录/快照中的子域名），
+// TLS 拨测读取证书到期时间，按 cert_expire 规则告警。
+//
+// 子域名不单独建存储：以 domains 表（kind=domain/zone）为骨架，
+// 主机名优先从最新解析快照提取，快照缺失时实时拉一次记录兜底；
+// 发现结果落在 cert_statuses（host 唯一），支持手动添加与排除。
 type CertService struct {
 	certs   *repo.CertRepo
 	domains *repo.DomainRepo
 	rules   *repo.AlertRepo
+	snaps   *repo.SnapshotRepo
+	zones   *repo.ZoneRepo
+	dns     *DNSService
 }
 
-func NewCertService(certs *repo.CertRepo, domains *repo.DomainRepo, rules *repo.AlertRepo) *CertService {
-	return &CertService{certs: certs, domains: domains, rules: rules}
+func NewCertService(certs *repo.CertRepo, domains *repo.DomainRepo, rules *repo.AlertRepo,
+	snaps *repo.SnapshotRepo, zones *repo.ZoneRepo, dns *DNSService) *CertService {
+	return &CertService{certs: certs, domains: domains, rules: rules, snaps: snaps, zones: zones, dns: dns}
 }
 
-// probe 对单个域名做 TLS 拨测，读取证书信息。
-// 跳过证书链校验（我们只关心到期时间，自签/过期证书同样要能读到）。
-func probeCert(domain string) (notAfter time.Time, issuer, subject string, err error) {
+// certTarget 一个待探测的主机名。
+type certTarget struct {
+	host       string
+	domainID   uint
+	domainName string
+}
+
+// probeCert 对主机名做 TLS 拨测，读取证书信息。
+// 跳过证书链校验（只关心到期时间，自签/过期证书同样要能读到）。
+func probeCert(host string) (notAfter time.Time, issuer, subject string, err error) {
 	dialer := &net.Dialer{Timeout: 8 * time.Second}
-	conn, err := tls.DialWithDialer(dialer, "tcp", domain+":443", &tls.Config{
-		ServerName:         domain,
+	conn, err := tls.DialWithDialer(dialer, "tcp", host+":443", &tls.Config{
+		ServerName:         host,
 		InsecureSkipVerify: true, //nolint:gosec // 仅读取证书元数据，不做链校验
 	})
 	if err != nil {
@@ -44,19 +61,190 @@ func probeCert(domain string) (notAfter time.Time, issuer, subject string, err e
 	return leaf.NotAfter, leaf.Issuer.CommonName, leaf.Subject.CommonName, nil
 }
 
-// ListStatus 返回全部域名的证书状态（供列表页展示）。
+// discoverHosts 汇总监控目标：
+//   - 注册域（kind=domain）→ apex 主机名
+//   - 托管 Zone（kind=zone）→ 最新快照中的 A/AAAA/CNAME 主机名；
+//     无快照时实时拉取一次记录（证书检查每天一次，API 成本可控）
+func (s *CertService) discoverHosts(ctx context.Context) ([]certTarget, error) {
+	seen := make(map[string]struct{})
+	targets := make([]certTarget, 0, 16)
+
+	add := func(t certTarget) {
+		if t.host == "" {
+			return
+		}
+		if _, dup := seen[t.host]; dup {
+			return
+		}
+		seen[t.host] = struct{}{}
+		targets = append(targets, t)
+	}
+
+	// 1) 主域 apex
+	domains, err := s.domains.ListAllByKind("domain")
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range domains {
+		add(certTarget{host: d.Name, domainID: d.ID, domainName: d.Name})
+	}
+
+	// 2) Zone 下的子域名（Zone 清单来自元数据缓存表）
+	zones, err := s.zones.ListViews()
+	if err != nil {
+		return nil, err
+	}
+	for _, z := range zones {
+		select {
+		case <-ctx.Done():
+			return targets, ctx.Err()
+		default:
+		}
+		records, source := s.zoneRecords(z.CloudAccountID, z.Name)
+		logger.L().Debug("证书监控子域名发现",
+			zap.String("zone", z.Name), zap.Int("records", len(records)), zap.String("source", source))
+		for _, rec := range records {
+			host := hostFromRecord(rec.Name, z.Name)
+			if host == "" {
+				continue
+			}
+			add(certTarget{host: host, domainName: z.Name})
+		}
+	}
+	return targets, nil
+}
+
+// zoneRecords 获取 Zone 的解析记录：优先最新快照，缺失则实时拉取。
+// 返回记录与来源（snapshot/live），失败返回空。
+func (s *CertService) zoneRecords(accountID uint, zone string) ([]provider.RecordInfo, string) {
+	if snap, err := s.snaps.Latest(accountID, zone); err == nil && snap != nil {
+		var records []provider.RecordInfo
+		if err := json.Unmarshal([]byte(snap.RecordJSON), &records); err == nil {
+			return records, "snapshot"
+		}
+	}
+	// 兜底：实时拉一次（系统身份）
+	records, err := s.dns.ListRecords(accountID, zone,
+		Actor{Role: model.RoleAdmin, Username: "cert-check"})
+	if err != nil {
+		logger.L().Warn("证书监控拉取解析记录失败", zap.String("zone", zone), zap.Error(err))
+		return nil, "error"
+	}
+	return records, "live"
+}
+
+// hostFromRecord 把记录主机名转换为完整域名。
+// 过滤规则：@ → zone 本身；* 泛解析与 _ 开头（_acme-challenge 等）跳过。
+func hostFromRecord(name, zone string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || name == "*" || strings.HasPrefix(name, "_") {
+		return ""
+	}
+	if name == "@" {
+		return zone
+	}
+	// 兼容个别厂商直接返回 FQDN 的情况
+	if name == zone || strings.HasSuffix(name, "."+zone) {
+		return name
+	}
+	return name + "." + zone
+}
+
+// ListStatus 返回全部主机名的证书状态（供列表页展示）。
 func (s *CertService) ListStatus() ([]model.CertStatus, error) {
 	return s.certs.List()
 }
 
-// probeAndStore 探测单域名并落库（保留已告警档位）。
-func (s *CertService) probeAndStore(d model.Domain) (*model.CertStatus, error) {
-	cs := &model.CertStatus{
-		DomainID: d.ID,
-		Name:     d.Name,
-		OK:       true,
+// AddManual 手动添加监控主机名。
+func (s *CertService) AddManual(host, domainName string) (*model.CertStatus, error) {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" || !strings.Contains(host, ".") {
+		return nil, fmt.Errorf("主机名格式不正确")
 	}
-	notAfter, issuer, subject, err := probeCert(d.Name)
+	if prev, err := s.certs.FindByHost(host); err == nil && prev != nil {
+		return nil, fmt.Errorf("该主机已在监控列表中")
+	}
+	cs := &model.CertStatus{
+		Host: host, DomainName: domainName, Source: "manual",
+		DaysLeft: -1, CheckedAt: time.Now(),
+	}
+	if err := s.certs.Upsert(cs); err != nil {
+		return nil, err
+	}
+	return cs, nil
+}
+
+// Delete 删除监控条目（手动条目与被排除的自动条目）。
+func (s *CertService) Delete(id uint) error { return s.certs.Delete(id) }
+
+// SetExcluded 设置/取消排除。
+func (s *CertService) SetExcluded(id uint, excluded bool) error {
+	return s.certs.SetExcluded(id, excluded)
+}
+
+// CheckDomains 执行一轮检查：发现主机名 → 逐个探测 → 清理消失的自动条目 → 告警。
+// domainID > 0 时只检查该主域（apex + 同名 Zone 的子域名）。
+func (s *CertService) CheckDomains(ctx context.Context, domainID uint) (checked, alerted int, err error) {
+	targets, err := s.discoverHosts(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	if domainID > 0 {
+		if d, e := s.domains.FindByID(domainID); e == nil {
+			filtered := targets[:0]
+			for _, t := range targets {
+				if t.domainName == d.Name {
+					filtered = append(filtered, t)
+				}
+			}
+			targets = filtered
+		}
+	}
+
+	statuses := make([]*model.CertStatus, 0, len(targets))
+	seenHosts := make([]string, 0, len(targets))
+	for _, t := range targets {
+		select {
+		case <-ctx.Done():
+			return checked, alerted, ctx.Err()
+		default:
+		}
+
+		// 已排除的条目不探测（保留人工决策），但计为已见、不清理
+		if prev, e := s.certs.FindByHost(t.host); e == nil && prev != nil && prev.Excluded {
+			seenHosts = append(seenHosts, t.host)
+			continue
+		}
+
+		cs, e := s.probeAndStore(t)
+		if e != nil {
+			logger.L().Warn("证书检查落库失败", zap.String("host", t.host), zap.Error(e))
+			continue
+		}
+		seenHosts = append(seenHosts, t.host)
+		statuses = append(statuses, cs)
+		checked++
+		time.Sleep(200 * time.Millisecond) // 温和限速
+	}
+
+	// DNS 上已消失且未被排除的自动条目一并清理（排除项保留，避免反复重生）
+	if n, e := s.certs.DeleteUnseenAuto(seenHosts); e != nil {
+		logger.L().Warn("清理失效证书监控条目失败", zap.Error(e))
+	} else if n > 0 {
+		logger.L().Info("清理失效证书监控条目", zap.Int64("count", n))
+	}
+
+	alerted, err = s.dispatchAlerts(statuses)
+	return checked, alerted, err
+}
+
+// probeAndStore 探测单个主机名并落库（保留已告警档位；证书更换后重置）。
+func (s *CertService) probeAndStore(t certTarget) (*model.CertStatus, error) {
+	cs := &model.CertStatus{
+		Host: t.host, DomainID: t.domainID, DomainName: t.domainName,
+		Source: "auto", OK: true,
+	}
+	notAfter, issuer, subject, err := probeCert(t.host)
 	if err != nil {
 		cs.OK = false
 		cs.DaysLeft = -1
@@ -69,7 +257,7 @@ func (s *CertService) probeAndStore(d model.Domain) (*model.CertStatus, error) {
 	}
 
 	// 保留已告警档位；证书更换（NotAfter 变化）后重置
-	if prev, e := s.certs.FindByDomainID(d.ID); e == nil {
+	if prev, e := s.certs.FindByHost(t.host); e == nil && prev != nil {
 		if prev.NotAfter != nil && cs.NotAfter != nil && prev.NotAfter.Equal(*cs.NotAfter) {
 			cs.AlertedOffsets = prev.AlertedOffsets
 		}
@@ -79,44 +267,7 @@ func (s *CertService) probeAndStore(d model.Domain) (*model.CertStatus, error) {
 	return cs, err
 }
 
-// CheckDomains 执行一轮检查：探测全部域名 → 按启用的 cert_expire 规则告警。
-// 返回 (检查数, 告警数, 错误)。仅探测指定 domainID 时传 id > 0。
-func (s *CertService) CheckDomains(ctx context.Context, domainID uint) (checked, alerted int, err error) {
-	domains, err := s.domains.ListWithExpiry()
-	if err != nil {
-		return 0, 0, err
-	}
-	// 只检查注册域（kind=domain）；托管 Zone 没有独立证书
-	filtered := make([]model.Domain, 0, len(domains))
-	for _, d := range domains {
-		if d.Kind == "domain" && (domainID == 0 || d.ID == domainID) {
-			filtered = append(filtered, d)
-		}
-	}
-
-	statuses := make([]*model.CertStatus, 0, len(filtered))
-	for _, d := range filtered {
-		select {
-		case <-ctx.Done():
-			return checked, alerted, ctx.Err()
-		default:
-		}
-		cs, e := s.probeAndStore(d)
-		if e != nil {
-			logger.L().Warn("证书检查落库失败", zap.String("domain", d.Name), zap.Error(e))
-			continue
-		}
-		checked++
-		statuses = append(statuses, cs)
-		time.Sleep(200 * time.Millisecond) // 温和限速
-	}
-
-	alerted, err = s.dispatchAlerts(statuses)
-	return checked, alerted, err
-}
-
-// dispatchAlerts 按启用的 cert_expire 规则发送告警。
-// 同一证书（NotAfter）同一档位只发一次。
+// dispatchAlerts 按启用的 cert_expire 规则发送告警（同一证书同档位只发一次）。
 func (s *CertService) dispatchAlerts(statuses []*model.CertStatus) (int, error) {
 	rules, err := s.rules.ListEnabledRules()
 	if err != nil {
@@ -153,8 +304,8 @@ func (s *CertService) dispatchAlerts(statuses []*model.CertStatus) (int, error) 
 
 				title := fmt.Sprintf("【DomHub】证书到期提醒（提前 %d 天）", offset)
 				content := fmt.Sprintf(
-					"域名 %s 的 HTTPS 证书将于 %s 到期，剩余约 %d 天。\n签发者：%s\n请及时续期证书。",
-					cs.Name, cs.NotAfter.Format("2006-01-02"), cs.DaysLeft, cs.Issuer,
+					"主机 %s 的 HTTPS 证书将于 %s 到期，剩余约 %d 天。\n签发者：%s\n请及时续期证书。",
+					cs.Host, cs.NotAfter.Format("2006-01-02"), cs.DaysLeft, cs.Issuer,
 				)
 
 				notified := make([]string, 0, len(channels))
@@ -177,18 +328,18 @@ func (s *CertService) dispatchAlerts(statuses []*model.CertStatus) (int, error) 
 				out, _ := json.Marshal(alertedKeys(alerted))
 				cs.AlertedOffsets = string(out)
 				if e := s.certs.Upsert(cs); e != nil {
-					logger.L().Error("更新证书告警档位失败", zap.String("domain", cs.Name), zap.Error(e))
+					logger.L().Error("更新证书告警档位失败", zap.String("host", cs.Host), zap.Error(e))
 				}
 				if e := s.rules.CreateLog(&model.AlertLog{
 					DomainID:   cs.DomainID,
-					DomainName: cs.Name,
+					DomainName: cs.Host,
 					Offset:     offset,
 					ExpYear:    cs.NotAfter.Year(),
 					Channels:   strings.Join(notified, ","),
 					Message:    fmt.Sprintf("证书告警 | 已通知: %s", strings.Join(notified, ", ")),
 					SentAt:     time.Now(),
 				}); e != nil {
-					logger.L().Warn("写入证书告警日志失败", zap.String("domain", cs.Name), zap.Error(e))
+					logger.L().Warn("写入证书告警日志失败", zap.String("host", cs.Host), zap.Error(e))
 				}
 				sent++
 			}

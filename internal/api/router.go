@@ -57,7 +57,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	snapshotSvc := service.NewSnapshotService(repo.NewSnapshotRepo(db), alertRepo, dnsSvc)
 	settingsSvc := service.NewSettingsService(repo.NewSettingRepo(db))
 	tokenSvc := service.NewTokenService(repo.NewApiTokenRepo(db), repo.NewUserRepo(db))
-	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo)
+	certSvc := service.NewCertService(repo.NewCertRepo(db), domainRepo, alertRepo, repo.NewSnapshotRepo(db), repo.NewZoneRepo(db), dnsSvc)
 	if scheduleApplier != nil {
 		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
 	}
@@ -143,9 +143,12 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	protected.POST("/alerts/check", writeAccess, alertH.RunCheck)
 	protected.GET("/alerts/logs", alertH.ListLogs)
 
-	// M6：SSL 证书监控（读需登录，检查需 operator+）
+	// M6：SSL 证书监控（读需登录，写需 operator+）
 	protected.GET("/certs", certH.List)
+	protected.POST("/certs", writeAccess, certH.AddManual)
 	protected.POST("/certs/check", writeAccess, certH.RunCheck)
+	protected.PUT("/certs/:id/excluded", writeAccess, certH.SetExcluded)
+	protected.DELETE("/certs/:id", writeAccess, certH.Delete)
 
 	// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
 	// zones 走本地缓存（秒开），refresh 回源厂商 API；记录操作仍实时
