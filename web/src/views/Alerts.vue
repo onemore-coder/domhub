@@ -92,6 +92,7 @@
           <el-tag size="small" type="success" effect="plain">健康 {{ certStats.healthy }}</el-tag>
           <el-tag size="small" type="warning" effect="plain">待续期 {{ certStats.expiring }}</el-tag>
           <el-tag size="small" type="danger" effect="plain">异常 {{ certStats.errors }}</el-tag>
+          <el-tag size="small" type="info" effect="plain">未检测 {{ certStats.unchecked }}</el-tag>
         </div>
         <el-switch
           v-model="certAttentionOnly" size="small"
@@ -260,19 +261,23 @@ const newHost = ref('')
 
 // 证书卡片默认只展示需关注项（即将到期或异常），健康的只计入总数
 const certAttentionOnly = ref(true)
+// 从未探测成功的主机（如不提供 443 服务的解析记录）不算异常、不进"需关注"，
+// 只计入"未检测"，避免刷屏；曾拿到过证书、现在探测失败的才视为异常。
+const hadCert = (c) => !!c.not_after
 const certStats = computed(() => {
   const active = certs.value.filter((c) => !c.excluded)
   return {
     total: active.length,
     healthy: active.filter((c) => c.ok && c.days_left > 30).length,
     expiring: active.filter((c) => c.ok && c.days_left <= 30).length,
-    errors: active.filter((c) => !c.ok).length,
+    errors: active.filter((c) => !c.ok && hadCert(c)).length,
+    unchecked: active.filter((c) => !c.ok && !hadCert(c)).length,
   }
 })
 const displayCerts = computed(() => {
   const active = certs.value.filter((c) => !c.excluded)
   if (!certAttentionOnly.value) return active
-  return active.filter((c) => !c.ok || c.days_left <= 30)
+  return active.filter((c) => (c.ok && c.days_left <= 30) || (!c.ok && hadCert(c)))
 })
 
 const channelDialog = ref(false)

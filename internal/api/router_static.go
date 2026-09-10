@@ -13,6 +13,9 @@ import (
 // serveStatic 托管内嵌的前端资源；未命中文件时回退 index.html（SPA 路由）。
 // 注意：不用 c.FileFromFS，因为它底层是 http.FileServer，
 // 对 index.html 会触发 "…/index.html → …/" 的 301 重定向，导致首页循环重定向。
+//
+// 缓存策略：index.html（含 SPA 回退）no-store，保证发版后浏览器立刻拿到新入口；
+// /assets/* 文件名带内容 hash，可长缓存 immutable。
 func serveStatic(c *gin.Context, root fs.FS) {
 	urlPath := path.Clean(c.Request.URL.Path)
 	rel := strings.TrimPrefix(urlPath, "/")
@@ -27,6 +30,11 @@ func serveStatic(c *gin.Context, root fs.FS) {
 			data, readErr := fs.ReadFile(root, rel)
 			_ = f.Close()
 			if readErr == nil {
+				if strings.HasPrefix(rel, "assets/") {
+					c.Header("Cache-Control", "public, max-age=31536000, immutable")
+				} else {
+					c.Header("Cache-Control", "no-store")
+				}
 				c.Data(http.StatusOK, mime.TypeByExtension(path.Ext(rel)), data)
 				return
 			}
@@ -40,5 +48,6 @@ func serveStatic(c *gin.Context, root fs.FS) {
 		c.String(http.StatusNotFound, "frontend assets not built")
 		return
 	}
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 }
