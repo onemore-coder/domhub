@@ -16,10 +16,6 @@
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
-        <el-menu-item index="/accounts">
-          <el-icon><Cloudy /></el-icon>
-          <span>云账号</span>
-        </el-menu-item>
         <el-sub-menu index="domain-group">
           <template #title>
             <el-icon><Collection /></el-icon>
@@ -28,10 +24,6 @@
           <el-menu-item index="/domains">域名台账</el-menu-item>
           <el-menu-item index="/dns">DNS 管理</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/alerts">
-          <el-icon><Bell /></el-icon>
-          <span>告警中心</span>
-        </el-menu-item>
         <el-sub-menu index="cert-group">
           <template #title>
             <el-icon><Lock /></el-icon>
@@ -40,18 +32,23 @@
           <el-menu-item index="/certs">证书监控</el-menu-item>
           <el-menu-item index="/certs/apply">证书申请</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/tokens">
-          <el-icon><Key /></el-icon>
-          <span>API Token</span>
+        <el-menu-item index="/accounts">
+          <el-icon><Cloudy /></el-icon>
+          <span>云账号</span>
         </el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/audit">
-          <el-icon><Document /></el-icon>
-          <span>审计日志</span>
+        <el-menu-item index="/alerts">
+          <el-icon><Bell /></el-icon>
+          <span>告警中心</span>
         </el-menu-item>
-        <el-menu-item v-if="isAdmin" index="/users">
-          <el-icon><User /></el-icon>
-          <span>用户与权限</span>
-        </el-menu-item>
+        <el-sub-menu index="security-group">
+          <template #title>
+            <el-icon><Key /></el-icon>
+            <span>安全配置</span>
+          </template>
+          <el-menu-item v-if="isAdmin" index="/users">用户与权限</el-menu-item>
+          <el-menu-item v-if="isAdmin" index="/audit">审计日志</el-menu-item>
+          <el-menu-item index="/tokens">API Token</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>系统设置</span>
