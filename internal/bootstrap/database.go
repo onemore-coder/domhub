@@ -68,6 +68,7 @@ func InitDB(cfg *config.Config) *gorm.DB {
 		&model.ApiToken{},
 		&model.AcmeAccount{},
 		&model.IssuedCert{},
+		&model.RecordTemplate{},
 	); err != nil {
 		panic("数据库迁移失败: " + err.Error())
 	}

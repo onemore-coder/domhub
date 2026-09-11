@@ -57,6 +57,31 @@
             <span v-else class="text-muted">—</span>
           </template>
         </el-table-column>
+        <el-table-column label="解析归属" min-width="180">
+          <template #default="{ row }">
+            <template v-if="zoneOwners[row.name]?.length">
+              <el-tooltip placement="top">
+                <template #content>
+                  <div v-for="o in zoneOwners[row.name]" :key="o.cloud_account_id">
+                    {{ o.account_name }}（{{ providerLabel(o.provider) }}）· {{ o.record_count }} 条记录
+                  </div>
+                </template>
+                <span class="owner-tags">
+                  <el-tag
+                    v-for="o in zoneOwners[row.name]" :key="o.cloud_account_id"
+                    size="small" type="success" class="owner-tag clickable"
+                    @click="goZone(o, row)"
+                  >{{ providerLabel(o.provider) }}</el-tag>
+                </span>
+              </el-tooltip>
+            </template>
+            <el-tooltip v-else-if="row.kind === 'domain'" placement="top"
+              content="该域名的解析未托管在任何已接入账号，如需管理请把解析迁移到已接入厂商或接入对应账号">
+              <el-tag size="small" type="danger" class="owner-tag">未接管</el-tag>
+            </el-tooltip>
+            <span v-else class="text-muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="标签" min-width="140">
           <template #default="{ row }">
             <el-tag v-for="t in splitTags(row.tags)" :key="t" size="small" class="tag-item">{{ t }}</el-tag>
@@ -103,8 +128,18 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listDomains, syncAllDomains, updateDomainMeta } from '../api/domhub'
+
+const router = useRouter()
+const zoneOwners = ref({}) // 域名 → 托管其解析的账号列表
+const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS', cloudflare: 'Cloudflare' }[p] || p)
+
+// 点击归属标签跳转到对应 Zone 的解析记录页
+function goZone(owner, row) {
+  router.push({ path: '/dns/records', query: { account_id: owner.cloud_account_id, zone: row.name } })
+}
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -141,6 +176,7 @@ async function load() {
     const res = await listDomains({ ...filters, expiring_days: filters.expiring_days || undefined })
     domains.value = res.data.items
     total.value = res.data.total
+    zoneOwners.value = res.data.zone_owners || {}
   } finally {
     loading.value = false
   }
@@ -220,6 +256,14 @@ onMounted(load)
 }
 .text-muted {
   color: #c0c4cc;
+}
+.owner-tags {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.owner-tag.clickable {
+  cursor: pointer;
 }
 .pagination {
   margin-top: 16px;

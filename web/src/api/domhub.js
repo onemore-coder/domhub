@@ -45,6 +45,16 @@ export const deleteDNSRecord = (data) => http.delete('/dns/records', { data })
 export const planDNS = (data) => http.post('/dns/plan', data)
 export const pushDNS = (data) => http.post('/dns/push', data)
 
+// 解析记录模板
+export const listRecordTemplates = () => http.get('/record-templates')
+export const createRecordTemplate = (data) => http.post('/record-templates', data)
+export const updateRecordTemplate = (id, data) => http.put(`/record-templates/${id}`, data)
+export const deleteRecordTemplate = (id) => http.delete(`/record-templates/${id}`)
+export const applyRecordTemplate = (id, data) => http.post(`/record-templates/${id}/apply`, data)
+
+// 跨 Zone 全局搜索
+export const globalSearch = (q) => http.get('/search', { params: { q } })
+
 // 解析记录快照
 export const listSnapshots = (accountId, zone, limit = 50) => http.get('/dns/snapshots', { params: { account_id: accountId, zone, limit } })
 export const captureSnapshot = (data) => http.post('/dns/snapshots', data)

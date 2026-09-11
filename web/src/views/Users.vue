@@ -74,17 +74,36 @@
     </el-dialog>
 
     <!-- Zone 授权 -->
-    <el-dialog v-model="grantDialogVisible" :title="`Zone 授权 - ${grantUser?.username || ''}`" width="560px">
+    <el-dialog v-model="grantDialogVisible" :title="`Zone 授权 - ${grantUser?.username || ''}`" width="640px">
       <el-alert type="info" :closable="false" show-icon class="grant-alert"
         title="勾选该用户可访问的 账号+Zone 组合；未勾选的 Zone 对其不可见（DNS 管理页面）" />
+      <div class="grant-batch-bar">
+        <el-input
+          v-model="grantFilter" placeholder="按域名关键字筛选" clearable
+          :prefix-icon="SearchIcon" size="small" style="width: 200px"
+        />
+        <el-button size="small" @click="grantSelectFiltered(true)">全选筛选结果</el-button>
+        <el-button size="small" @click="grantSelectFiltered(false)">清空筛选结果</el-button>
+        <el-button size="small" type="primary" plain @click="grantSelectAll(true)">全选全部</el-button>
+        <el-button size="small" type="info" plain @click="grantSelectAll(false)">清空全部</el-button>
+      </div>
       <div v-loading="grantsLoading" class="grant-list">
-        <div v-for="(zones, accId) in zonesByAccount" :key="accId" class="grant-account">
-          <div class="grant-account-name">{{ accountName(accId) }}</div>
+        <div v-for="(zones, accId) in filteredZonesByAccount" :key="accId" class="grant-account">
+          <div class="grant-account-head">
+            <el-checkbox
+              :model-value="accountAllSelected(accId, zones)"
+              :indeterminate="accountIndeterminate(accId, zones)"
+              @change="(v) => toggleAccount(accId, zones, v)"
+            >
+              <span class="grant-account-name">{{ accountName(accId) }}</span>
+            </el-checkbox>
+            <span class="grant-count">{{ (grantSelection[accId] || []).length }}/{{ zones.length }}</span>
+          </div>
           <el-checkbox-group v-model="grantSelection[accId]">
             <el-checkbox v-for="z in zones" :key="z" :value="z">{{ z }}</el-checkbox>
           </el-checkbox-group>
         </div>
-        <el-empty v-if="!Object.keys(zonesByAccount).length" description="暂无可用 Zone，请先在账号页完成同步" :image-size="60" />
+        <el-empty v-if="!Object.keys(filteredZonesByAccount).length" description="暂无可用 Zone，请先在 DNS 管理页刷新缓存" :image-size="60" />
       </div>
       <template #footer>
         <el-button @click="grantDialogVisible = false">取消</el-button>
@@ -97,7 +116,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search as SearchIcon } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import {
   listUsers, createUser, updateUser, deleteUser,
@@ -122,6 +141,52 @@ const savingGrants = ref(false)
 const grantUser = ref(null)
 const zonesByAccount = ref({}) // accountId -> [zone...]
 const grantSelection = ref({}) // accountId -> [zone...]
+const grantFilter = ref('')
+
+// 按关键字过滤后的授权分组视图
+const filteredZonesByAccount = computed(() => {
+  const kw = grantFilter.value.trim().toLowerCase()
+  if (!kw) return zonesByAccount.value
+  const out = {}
+  for (const [accId, zones] of Object.entries(zonesByAccount.value)) {
+    const hit = zones.filter((z) => z.toLowerCase().includes(kw))
+    if (hit.length) out[accId] = hit
+  }
+  return out
+})
+
+function accountAllSelected(accId, zones) {
+  const sel = grantSelection.value[accId] || []
+  return zones.length > 0 && zones.every((z) => sel.includes(z))
+}
+
+function accountIndeterminate(accId, zones) {
+  const sel = grantSelection.value[accId] || []
+  const n = zones.filter((z) => sel.includes(z)).length
+  return n > 0 && n < zones.length
+}
+
+function toggleAccount(accId, zones, checked) {
+  grantSelection.value[accId] = checked ? [...zones] : []
+}
+
+// 批量勾选：all=true 勾上当前视图（筛选结果或全部），false 则从中移除
+function grantSelectFiltered(all) {
+  for (const [accId, zones] of Object.entries(filteredZonesByAccount.value)) {
+    const sel = new Set(grantSelection.value[accId] || [])
+    for (const z of zones) {
+      if (all) sel.add(z)
+      else sel.delete(z)
+    }
+    grantSelection.value[accId] = [...sel]
+  }
+}
+
+function grantSelectAll(all) {
+  for (const [accId, zones] of Object.entries(zonesByAccount.value)) {
+    grantSelection.value[accId] = all ? [...zones] : []
+  }
+}
 
 const roleLabel = (r) => ({ admin: '管理员', operator: '操作员', viewer: '观察者' }[r] || r)
 const roleTag = (r) => ({ admin: 'danger', operator: 'warning', viewer: 'info' }[r] || 'info')
@@ -144,18 +209,23 @@ async function load() {
 
 onMounted(async () => {
   await load()
-  // 拉账号与其托管 Zone（用于授权对话框，从 DNS API 实时获取）
+  // 拉账号与其托管 Zone（用于授权对话框；走本地缓存接口，一次请求）
   try {
     const accRes = await listAccounts()
     accountsCache.value = accRes.data?.items || []
     const byAccount = {}
     for (const a of accountsCache.value) {
-      try {
-        const res = await listDNSZones(a.id)
-        byAccount[String(a.id)] = (res.data || []).map((z) => z.name)
-      } catch {
-        byAccount[String(a.id)] = []
+      byAccount[String(a.id)] = []
+    }
+    try {
+      const res = await listDNSZones() // 不带 account_id → 全部账号的缓存视图
+      for (const z of res.data || []) {
+        const key = String(z.cloud_account_id)
+        if (key in byAccount) byAccount[key].push(z.name)
       }
+    } catch { /* 缓存接口失败则各账号显示为空 */ }
+    for (const a of accountsCache.value) {
+      byAccount[String(a.id)]?.sort()
       // 初始化勾选状态，保证 v-model 可写
       grantSelection.value[String(a.id)] = grantSelection.value[String(a.id)] || []
     }
@@ -281,9 +351,25 @@ async function saveGrants() {
 .grant-account {
   margin-bottom: 14px;
 }
+.grant-account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
 .grant-account-name {
   font-weight: 600;
-  margin-bottom: 6px;
   color: #303133;
+}
+.grant-count {
+  font-size: 12px;
+  color: #909399;
+}
+.grant-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 </style>

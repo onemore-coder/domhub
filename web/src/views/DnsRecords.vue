@@ -11,6 +11,23 @@
         <el-button :icon="Refresh" :loading="syncing" @click="syncFromCloud">同步云端</el-button>
         <div class="spacer" />
         <el-button type="primary" :icon="Plus" @click="openCreate">添加记录</el-button>
+        <el-dropdown @command="handleTemplateCommand" class="tpl-dropdown">
+          <el-button plain :loading="templatesLoading">
+            应用模板<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="__manage">管理模板…</el-dropdown-item>
+              <template v-if="templates.length">
+                <el-dropdown-item
+                  v-for="t in templates" :key="t.id" divided
+                  :command="String(t.id)"
+                >{{ t.name }}（{{ parseItems(t.items).length }} 条记录）</el-dropdown-item>
+              </template>
+              <el-dropdown-item v-else divided disabled>暂无模板</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="success" plain :disabled="!changed" @click="openPlanDialog">
           预览变更{{ planCount ? `（${planCount}）` : '' }}
         </el-button>
@@ -28,8 +45,15 @@
           <el-option v-for="t in recordTypes" :key="t" :value="t" :label="t" />
         </el-select>
         <span class="filter-count">共 {{ filteredRecords.length }} 条记录</span>
+        <div class="spacer" />
+        <template v-if="selection.length">
+          <span class="batch-hint">已选 {{ selection.length }} 条</span>
+          <el-button size="small" type="primary" plain @click="openBatchTTL">批量改 TTL</el-button>
+          <el-button size="small" type="danger" plain @click="batchDelete">批量删除</el-button>
+        </template>
       </div>
-      <el-table :data="filteredRecords" v-loading="recordsLoading" stripe>
+      <el-table :data="filteredRecords" v-loading="recordsLoading" stripe @selection-change="(v) => (selection = v)">
+        <el-table-column type="selection" width="42" />
         <el-table-column label="主机记录" prop="name" width="150" sortable>
           <template #default="{ row }">
             <el-tag v-if="row.name === '@'" size="small" type="info">@</el-tag>
@@ -222,20 +246,114 @@
         </el-table>
       </el-dialog>
     </el-drawer>
+
+    <!-- 批量修改 TTL -->
+    <el-dialog v-model="batchTTLVisible" title="批量修改 TTL" width="420px">
+      <el-alert type="warning" :closable="false" show-icon class="plan-alert"
+        :title="`将对选中的 ${batchTTLTargets.length} 条记录统一修改 TTL，逐条实时写云端`" />
+      <el-form label-width="80px">
+        <el-form-item label="新 TTL">
+          <el-select v-model="batchTTLValue" style="width: 100%">
+            <el-option v-for="t in ttlOptions" :key="t" :value="t" :label="t" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchTTLVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchRunning" @click="doBatchTTL">开始修改</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 模板管理 -->
+    <el-dialog v-model="tplManageVisible" title="解析记录模板" width="720px">
+      <div class="tpl-toolbar">
+        <span class="tpl-hint">模板是一组常用记录组合（如 新站点 = A + www CNAME + MX + SPF），可在任意 Zone 一键下发</span>
+        <el-button type="primary" size="small" :icon="Plus" @click="openTplEdit()">新建模板</el-button>
+      </div>
+      <el-table :data="templates" v-loading="templatesLoading" size="small">
+        <el-table-column label="名称" prop="name" width="140" />
+        <el-table-column label="包含记录" min-width="260">
+          <template #default="{ row }">
+            <el-tag
+              v-for="(it, i) in parseItems(row.items)" :key="i" size="small"
+              :type="typeTag(it.type)" class="tag-item"
+            >{{ it.type }} {{ it.name }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" prop="remark" min-width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openTplEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="removeTemplate(row)">删除</el-button>
+          </template>
+        </el-table-column>
+        <template #empty><el-empty description="暂无模板" :image-size="60" /></template>
+      </el-table>
+    </el-dialog>
+
+    <!-- 模板编辑 -->
+    <el-dialog v-model="tplEditVisible" :title="tplEditingId ? '编辑模板' : '新建模板'" width="760px" append-to-body>
+      <el-form :model="tplForm" label-width="70px">
+        <el-form-item label="名称" required>
+          <el-input v-model="tplForm.name" placeholder="如：新站点基础解析" style="width: 260px" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="tplForm.remark" style="width: 420px" />
+        </el-form-item>
+      </el-form>
+      <el-table :data="tplForm.items" size="small">
+        <el-table-column label="主机记录" width="130">
+          <template #default="{ row }"><el-input v-model="row.name" placeholder="@ / www" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="类型" width="100">
+          <template #default="{ row }">
+            <el-select v-model="row.type" size="small">
+              <el-option v-for="t in recordTypes" :key="t" :value="t" :label="t" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="记录值" min-width="200">
+          <template #default="{ row }"><el-input v-model="row.value" placeholder="{zone} 代表目标域名" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="TTL" width="110">
+          <template #default="{ row }">
+            <el-select v-model="row.ttl" size="small">
+              <el-option v-for="t in ttlOptions" :key="t" :value="t" :label="t" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先级" width="100">
+          <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="65535" size="small" style="width: 80px" /></template>
+        </el-table-column>
+        <el-table-column label="" width="50">
+          <template #default="{ $index }">
+            <el-button link type="danger" size="small" @click="tplForm.items.splice($index, 1)">删</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-button size="small" :icon="Plus" class="tpl-add-item" @click="tplForm.items.push({ name: '', type: 'A', value: '', ttl: 600, priority: 0, line: 'default' })">
+        添加一条记录
+      </el-button>
+      <template #footer>
+        <el-button @click="tplEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="tplSaving" @click="saveTemplate">保存模板</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Back, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Back, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
   listAccounts, listDNSRecordsCached, syncDNSRecords,
   createDNSRecord, updateDNSRecord, deleteDNSRecord,
   planDNS, pushDNS,
   listSnapshots, captureSnapshot, diffSnapshots, restorePlan,
+  listRecordTemplates, createRecordTemplate, updateRecordTemplate, deleteRecordTemplate, applyRecordTemplate,
 } from '../api/domhub'
 
 const route = useRoute()
@@ -259,7 +377,7 @@ const syncedAtLabel = computed(() => {
   return String(syncedAt.value).replace('T', ' ').slice(5, 16)
 })
 
-const nameFilter = ref('')
+const nameFilter = ref(String(route.query.q || ''))
 const typeFilter = ref('')
 const filteredRecords = computed(() => {
   const kw = nameFilter.value.trim().toLowerCase()
@@ -340,6 +458,19 @@ const changed = computed(() => planCount.value > 0)
 const typeTag = (t) =>
   ({ A: 'success', AAAA: 'success', CNAME: 'warning', TXT: 'info', MX: 'danger', NS: 'warning' }[t] || 'info')
 
+// 从全局搜索跳转而来（同路由不同 query）：切换 Zone 上下文并预填筛选
+watch(() => route.fullPath, () => {
+  if (route.path !== '/dns/records') return
+  const acc = Number(route.query.account_id) || 0
+  const zone = String(route.query.zone || '')
+  if (acc && zone && (acc !== accountId.value || zone !== zoneName.value)) {
+    accountId.value = acc
+    zoneName.value = zone
+    loadRecords()
+  }
+  if (route.query.q !== undefined) nameFilter.value = String(route.query.q)
+})
+
 onMounted(async () => {
   if (!accountId.value || !zoneName.value) {
     ElMessage.error('缺少账号或域名参数')
@@ -355,6 +486,7 @@ onMounted(async () => {
     }
   } catch { /* 归属展示失败不阻塞主流程 */ }
   await loadRecords()
+  loadTemplates()
   if (route.query.snapshot === '1') {
     await openSnapshots()
   }
@@ -610,6 +742,221 @@ async function restoreFrom(row) {
     ElMessage.error(e.response?.data?.message || '生成恢复计划失败')
   }
 }
+
+// ---- 批量操作 ----
+const selection = ref([])
+const batchTTLVisible = ref(false)
+const batchTTLValue = ref(600)
+const batchTTLTargets = ref([])
+const batchRunning = ref(false)
+
+function openBatchTTL() {
+  // Cloudflare 橙云记录 TTL 强制 auto，改了也会被云端覆盖，直接排除并提示
+  const skipped = selection.value.filter((r) => isCF.value && r.proxied && proxiableTypes.includes(r.type))
+  const targets = selection.value.filter((r) => !skipped.includes(r))
+  if (!targets.length) {
+    ElMessage.warning('选中的记录均为橙云代理（TTL 固定为自动），无需修改')
+    return
+  }
+  batchTTLTargets.value = targets
+  if (skipped.length) {
+    ElMessage.info(`已排除 ${skipped.length} 条橙云代理记录（TTL 固定为自动）`)
+  }
+  batchTTLVisible.value = true
+}
+
+async function doBatchTTL() {
+  batchRunning.value = true
+  let ok = 0
+  const failed = []
+  try {
+    for (const row of batchTTLTargets.value) {
+      try {
+        await updateDNSRecord({
+          account_id: accountId.value, zone: zoneName.value, record_id: row.provider_record_id,
+          name: row.name, type: row.type, value: row.value,
+          ttl: batchTTLValue.value, priority: row.priority || 0,
+          line: row.line || 'default', proxied: !!row.proxied,
+        })
+        ok++
+      } catch (e) {
+        failed.push(`${row.type} ${row.name}: ${e.response?.data?.message || '失败'}`)
+      }
+    }
+    if (failed.length) {
+      ElMessage.error(`${ok}/${batchTTLTargets.value.length} 成功；失败：${failed.join('；')}`)
+    } else {
+      ElMessage.success(`已将 ${ok} 条记录 TTL 更新为 ${batchTTLValue.value}`)
+    }
+    batchTTLVisible.value = false
+    await loadRecords()
+  } finally {
+    batchRunning.value = false
+  }
+}
+
+async function batchDelete() {
+  const targets = selection.value.slice()
+  const ns = targets.filter((r) => r.type === 'NS')
+  const deletable = targets.filter((r) => r.type !== 'NS')
+  if (!deletable.length) {
+    ElMessage.warning('NS 记录影响域名解析托管权，不支持批量删除，请逐条单独处理')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${deletable.length} 条记录？此操作立即生效且不可撤销。` +
+        (ns.length ? `\n其中 ${ns.length} 条 NS 记录将被跳过（高危操作请逐条处理）。` : ''),
+      '批量删除解析记录',
+      { type: 'error', confirmButtonText: '批量删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  batchRunning.value = true
+  let ok = 0
+  const failed = []
+  try {
+    for (const row of deletable) {
+      try {
+        await deleteDNSRecord({
+          account_id: accountId.value, zone: zoneName.value,
+          record_id: row.provider_record_id, desc: `批量删除 ${row.type} ${row.name}`,
+        })
+        ok++
+      } catch (e) {
+        failed.push(`${row.type} ${row.name}: ${e.response?.data?.message || '失败'}`)
+      }
+    }
+    if (failed.length) {
+      ElMessage.error(`${ok}/${deletable.length} 成功；失败：${failed.join('；')}`)
+    } else {
+      ElMessage.success(`已删除 ${ok} 条记录`)
+    }
+    await loadRecords()
+  } finally {
+    batchRunning.value = false
+  }
+}
+
+// ---- 记录模板 ----
+const templates = ref([])
+const templatesLoading = ref(false)
+const tplManageVisible = ref(false)
+const tplEditVisible = ref(false)
+const tplEditingId = ref(0)
+const tplSaving = ref(false)
+const tplForm = ref({ name: '', remark: '', items: [] })
+
+const parseItems = (raw) => {
+  try {
+    const arr = JSON.parse(raw || '[]')
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+async function loadTemplates() {
+  templatesLoading.value = true
+  try {
+    const res = await listRecordTemplates()
+    templates.value = res.data || []
+  } catch { /* 模板加载失败不阻塞 */ } finally {
+    templatesLoading.value = false
+  }
+}
+
+async function handleTemplateCommand(cmd) {
+  if (cmd === '__manage') {
+    tplManageVisible.value = true
+    await loadTemplates()
+    return
+  }
+  await applyTemplate(Number(cmd))
+}
+
+async function applyTemplate(id) {
+  const t = templates.value.find((x) => x.id === id)
+  if (!t) return
+  if (!t) return
+  try {
+    await ElMessageBox.confirm(
+      `将模板「${t.name}」应用到 ${zoneName.value}？同名同类型的既有记录会跳过（不覆盖现网），其余生成变更计划，预览确认后才执行。`,
+      '应用模板',
+      { type: 'info', confirmButtonText: '生成计划', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const res = await applyRecordTemplate(id, { account_id: accountId.value, zone: zoneName.value })
+    const { plan, skipped } = res.data || {}
+    if (skipped?.length) {
+      ElMessage.info(`跳过 ${skipped.length} 条同名同类型记录：${skipped.join('、')}`)
+    }
+    if (!plan?.length) {
+      ElMessage.success('现网已与模板一致，无需变更')
+      return
+    }
+    planActions.value = plan
+    planDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '应用模板失败')
+  }
+}
+
+function openTplEdit(row) {
+  tplEditingId.value = row ? row.id : 0
+  tplForm.value = row
+    ? { name: row.name, remark: row.remark, items: parseItems(row.items).map((x) => ({ ...x })) }
+    : { name: '', remark: '', items: [{ name: '', type: 'A', value: '', ttl: 600, priority: 0, line: 'default' }] }
+  tplEditVisible.value = true
+}
+
+async function saveTemplate() {
+  const f = tplForm.value
+  if (!f.name.trim()) {
+    ElMessage.warning('模板名称不能为空')
+    return
+  }
+  if (!f.items.length) {
+    ElMessage.warning('模板至少包含一条记录')
+    return
+  }
+  tplSaving.value = true
+  try {
+    if (tplEditingId.value) {
+      await updateRecordTemplate(tplEditingId.value, f)
+    } else {
+      await createRecordTemplate(f)
+    }
+    ElMessage.success('模板已保存')
+    tplEditVisible.value = false
+    await loadTemplates()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '保存模板失败')
+  } finally {
+    tplSaving.value = false
+  }
+}
+
+async function removeTemplate(row) {
+  try {
+    await ElMessageBox.confirm(`确认删除模板「${row.name}」？`, '删除模板', {
+      type: 'warning', confirmButtonText: '删除',
+    })
+  } catch {
+    return
+  }
+  try {
+    await deleteRecordTemplate(row.id)
+    ElMessage.success('模板已删除')
+    await loadTemplates()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '删除失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -687,5 +1034,28 @@ async function restoreFrom(row) {
 .snap-hint {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.batch-hint {
+  font-size: 12px;
+  color: var(--el-color-primary);
+}
+.tpl-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.tpl-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+}
+.tpl-add-item {
+  margin-top: 10px;
+}
+.tag-item {
+  margin-right: 4px;
+  margin-bottom: 2px;
 }
 </style>

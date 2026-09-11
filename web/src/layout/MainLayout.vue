@@ -62,6 +62,12 @@
     <el-container>
       <el-header class="header">
         <div class="header-title">{{ $route.meta.title }}</div>
+        <div class="header-search">
+          <el-input
+            v-model="searchKeyword" placeholder="搜索域名 / 解析记录，回车确认" clearable
+            :prefix-icon="SearchIcon" @keyup.enter="doSearch"
+          />
+        </div>
         <el-dropdown @command="handleCommand">
           <span class="user-info">
             <el-avatar :size="30" class="user-avatar">{{ initial }}</el-avatar>
@@ -81,6 +87,37 @@
         <router-view />
       </el-main>
     </el-container>
+
+    <!-- 全局搜索结果 -->
+    <el-dialog v-model="searchVisible" title="全局搜索" width="620px">
+      <div v-loading="searching">
+        <template v-if="searchKeyword">
+          <div class="search-section">托管域名</div>
+          <template v-if="searchZones.length">
+            <div v-for="z in searchZones" :key="z.id" class="search-item" @click="goZoneRecord(z.cloud_account_id, z.name)">
+              <el-icon class="search-item-icon"><Collection /></el-icon>
+              <span class="search-item-main">{{ z.name }}</span>
+              <span class="search-item-sub">{{ z.account_name }} · {{ z.record_count }} 条记录</span>
+            </div>
+          </template>
+          <div v-else class="search-empty">无匹配域名</div>
+
+          <div class="search-section">解析记录</div>
+          <template v-if="searchRecords.length">
+            <div
+              v-for="r in searchRecords" :key="r.id"
+              class="search-item" @click="goZoneRecord(r.cloud_account_id, r.zone_name, r.name)"
+            >
+              <el-tag size="small" :type="r.type === 'A' ? 'success' : 'info'" class="search-item-type">{{ r.type }}</el-tag>
+              <span class="search-item-main">{{ r.name }}.{{ r.zone_name }}</span>
+              <span class="search-item-value">{{ r.value }}</span>
+              <span class="search-item-sub">{{ r.account_name }}</span>
+            </div>
+          </template>
+          <div v-else class="search-empty">无匹配记录</div>
+        </template>
+      </div>
+    </el-dialog>
 
     <!-- 修改密码 -->
     <el-dialog v-model="pwdDialogVisible" title="修改密码" width="420px">
@@ -107,11 +144,43 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Search as SearchIcon } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
-import { changeMyPassword } from '../api/domhub'
+import { changeMyPassword, globalSearch } from '../api/domhub'
 
 const router = useRouter()
 const userStore = useUserStore()
+
+// ---- 全局搜索 ----
+const searchKeyword = ref('')
+const searchVisible = ref(false)
+const searching = ref(false)
+const searchZones = ref([])
+const searchRecords = ref([])
+
+async function doSearch() {
+  const q = searchKeyword.value.trim()
+  if (!q) return
+  searchVisible.value = true
+  searching.value = true
+  try {
+    const res = await globalSearch(q)
+    searchZones.value = res.data?.zones || []
+    searchRecords.value = res.data?.records || []
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '搜索失败')
+  } finally {
+    searching.value = false
+  }
+}
+
+function goZoneRecord(accountId, zone, recordName) {
+  searchVisible.value = false
+  router.push({
+    path: '/dns/records',
+    query: { account_id: accountId, zone, ...(recordName ? { q: recordName } : {}) },
+  })
+}
 
 const initial = computed(() => (userStore.user?.username || 'U').charAt(0).toUpperCase())
 const isAdmin = computed(() => userStore.user?.role === 'admin')
@@ -200,6 +269,62 @@ async function doChangePassword() {
   font-size: 16px;
   font-weight: 600;
   color: #1f2d3d;
+}
+.header-search {
+  flex: 1;
+  max-width: 380px;
+  margin: 0 24px;
+}
+.search-section {
+  font-size: 12px;
+  font-weight: 600;
+  color: #909399;
+  margin: 14px 0 6px;
+}
+.search-section:first-child {
+  margin-top: 0;
+}
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+.search-item:hover {
+  background: #f5f7fa;
+}
+.search-item-icon {
+  color: #409eff;
+}
+.search-item-type {
+  flex-shrink: 0;
+}
+.search-item-main {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.search-item-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #909399;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.search-item-sub {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #909399;
+}
+.search-empty {
+  color: #c0c4cc;
+  font-size: 13px;
+  padding: 4px 10px 10px;
 }
 .user-info {
   display: flex;

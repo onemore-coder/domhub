@@ -73,7 +73,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	}
 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
-	domainH := handler.NewDomainHandler(domainRepo, accountSvc)
+	domainH := handler.NewDomainHandler(domainRepo, accountSvc, repo.NewZoneRepo(db))
 	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
 	dnsH := handler.NewDNSHandler(dnsSvc, zoneSvc, certSvc)
 	auditH := handler.NewAuditHandler(auditRepo)
@@ -83,6 +83,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	zoneH := handler.NewZoneHandler(zoneSvc)
 	certH := handler.NewCertHandler(certSvc)
 	acmeH := handler.NewAcmeHandler(acmeSvc)
+	templateH := handler.NewTemplateHandler(repo.NewRecordTemplateRepo(db), dnsSvc, zoneSvc)
 
 	adminOnly := middleware.RequireRole(model.RoleAdmin)
 	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
@@ -184,6 +185,16 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.DELETE("/dns/records", writeAccess, dnsH.DeleteRecord)
 		protected.POST("/dns/plan", dnsH.Plan)
 		protected.POST("/dns/push", writeAccess, dnsH.Push)
+
+		// M6：解析记录模板（CRUD + 一键下发预览，执行复用 /dns/push）
+		protected.GET("/record-templates", templateH.List)
+		protected.POST("/record-templates", writeAccess, templateH.Create)
+		protected.PUT("/record-templates/:id", writeAccess, templateH.Update)
+		protected.DELETE("/record-templates/:id", writeAccess, templateH.Delete)
+		protected.POST("/record-templates/:id/apply", writeAccess, templateH.Apply)
+
+		// M6：跨 Zone 全局搜索（顶栏搜索框）
+		protected.GET("/search", zoneH.Search)
 
 		// M5：API Token（个人管理，dht_ 前缀凭据供 CI/自动化调用）
 		tokenH := handler.NewTokenHandler(tokenSvc)
