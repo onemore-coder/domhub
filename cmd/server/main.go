@@ -88,6 +88,9 @@ func main() {
 	scheduler.Start()
 	defer scheduler.Stop()
 
+	// 启动预热：Zone 缓存为空时立即刷新，避免重启后归属/搜索/授权整片空窗
+	go zoneSvc.WarmupIfEmpty()
+
 	r := api.NewRouter(db, cfg, staticFS, scheduler)
 
 	srv := &http.Server{

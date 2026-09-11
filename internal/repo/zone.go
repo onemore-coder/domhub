@@ -60,6 +60,13 @@ func (r *ZoneRepo) ListViews() ([]ZoneView, error) {
 	return out, err
 }
 
+// CountAll 缓存总数（启动预热判断用）。
+func (r *ZoneRepo) CountAll() (int64, error) {
+	var n int64
+	err := r.db.Model(&model.Zone{}).Count(&n).Error
+	return n, err
+}
+
 // CountByAccount 某账号缓存条数（刷新前后对比可用）。
 func (r *ZoneRepo) CountByAccount(accountID uint) (int64, error) {
 	var n int64

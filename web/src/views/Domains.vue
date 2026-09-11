@@ -75,9 +75,13 @@
                 </span>
               </el-tooltip>
             </template>
-            <el-tooltip v-else-if="row.kind === 'domain'" placement="top"
+            <el-tooltip v-else-if="zonesSynced && row.kind === 'domain'" placement="top"
               content="该域名的解析未托管在任何已接入账号，如需管理请把解析迁移到已接入厂商或接入对应账号">
               <el-tag size="small" type="danger" class="owner-tag">未接管</el-tag>
+            </el-tooltip>
+            <el-tooltip v-else-if="row.kind === 'domain'" placement="top"
+              content="Zone 缓存尚未同步完成，暂无法判断解析归属；稍后自动刷新，或到 DNS 管理页手动刷新">
+              <el-tag size="small" type="info" class="owner-tag">同步中</el-tag>
             </el-tooltip>
             <span v-else class="text-muted">—</span>
           </template>
@@ -134,6 +138,7 @@ import { listDomains, syncAllDomains, updateDomainMeta } from '../api/domhub'
 
 const router = useRouter()
 const zoneOwners = ref({}) // 域名 → 托管其解析的账号列表
+const zonesSynced = ref(true) // Zone 缓存是否已同步（为空时「未接管」不可信）
 const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS', cloudflare: 'Cloudflare' }[p] || p)
 
 // 点击归属标签跳转到对应 Zone 的解析记录页
@@ -177,6 +182,7 @@ async function load() {
     domains.value = res.data.items
     total.value = res.data.total
     zoneOwners.value = res.data.zone_owners || {}
+    zonesSynced.value = Object.keys(zoneOwners.value).length > 0
   } finally {
     loading.value = false
   }

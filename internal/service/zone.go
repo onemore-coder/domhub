@@ -37,6 +37,23 @@ func NewZoneService(accounts *repo.CloudAccountRepo, zones *repo.ZoneRepo, recor
 // accountRateLimit 多账号串行刷新时的间隔，规避厂商 API 限流。
 const accountRateLimit = 300 * time.Millisecond
 
+// WarmupIfEmpty 启动预热：缓存表为空时立即全量刷新一次。
+// 场景：新部署 / 换库后，若等 2 小时周期的定时任务，期间归属标注、
+// 全局搜索、授权对话框会整片「空窗」，被误读为「未接管」。
+func (s *ZoneService) WarmupIfEmpty() {
+	count, err := s.zones.CountAll()
+	if err != nil || count > 0 {
+		return
+	}
+	logger.L().Info("Zone 缓存为空，启动预热刷新")
+	accounts, zones, err := s.Refresh(0)
+	if err != nil {
+		logger.L().Error("Zone 缓存预热失败", zap.Error(err))
+		return
+	}
+	logger.L().Info("Zone 缓存预热完成", zap.Int("accounts", accounts), zap.Int("zones", zones))
+}
+
 // Refresh 刷新指定账号（accountID=0 表示全部启用账号）的 Zone 缓存。
 // 返回刷新的账号数与 Zone 总数。
 func (s *ZoneService) Refresh(accountID uint) (int, int, error) {
