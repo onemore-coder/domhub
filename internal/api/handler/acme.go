@@ -18,10 +18,12 @@ func NewAcmeHandler(svc *service.AcmeService) *AcmeHandler { return &AcmeHandler
 
 type applyReq struct {
 	DNSAccountID uint     `json:"dns_account_id"`
-	Domains      []string `json:"domains"` // 第一个为主域名
+	Domains      []string `json:"domains"` // 第一个为主域名，支持通配符 *.example.com
 	Email        string   `json:"email"`
 	CA           string   `json:"ca"` // letsencrypt / letsencrypt_staging / zerossl
 	AutoRenew    bool     `json:"auto_renew"`
+	EABKid       string   `json:"eab_kid"` // ZeroSSL 等要求 EAB 的 CA 必填
+	EABKey       string   `json:"eab_key"`
 }
 
 // ListCAs GET /api/v1/certs-issued/cas —— 可用 CA 目录。
@@ -36,7 +38,7 @@ func (h *AcmeHandler) Apply(c *gin.Context) {
 		c.JSON(400, gin.H{"code": 400, "message": "参数错误: " + err.Error()})
 		return
 	}
-	cert, err := h.svc.Create(req.DNSAccountID, req.Domains, req.Email, req.CA, req.AutoRenew)
+	cert, err := h.svc.Create(req.DNSAccountID, req.Domains, req.Email, req.CA, req.AutoRenew, req.EABKid, req.EABKey)
 	if err != nil {
 		c.JSON(400, gin.H{"code": 400, "message": err.Error()})
 		return

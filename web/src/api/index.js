@@ -15,3 +15,7 @@ export function logout() {
 export function getDashboardSummary() {
   return http.get('/dashboard/summary')
 }
+
+export function getDashboardStats() {
+  return http.get('/dashboard/stats')
+}

@@ -47,7 +47,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	auditRepo := repo.NewAuditRepo(db)
 	grantRepo := repo.NewGrantRepo(db)
 
-	dashH := handler.NewDashboardHandler(accountRepo, domainRepo)
+	dashH := handler.NewDashboardHandler(accountRepo, domainRepo, auditRepo)
 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
@@ -119,6 +119,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	{
 		protected.GET("/auth/me", authH.Me)
 		protected.GET("/dashboard/summary", dashH.Summary)
+		protected.GET("/dashboard/stats", dashH.Stats)
 
 		// 云账号：读所有登录用户可见（AK 已脱敏），写需 operator+；用户/凭证管理 admin 专属
 		accountGroup := protected.Group("/accounts")

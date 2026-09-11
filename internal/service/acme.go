@@ -85,7 +85,8 @@ func NewAcmeService(
 }
 
 // Create 创建申请并异步执行：先落库（pending）可查询，后台跑 ACME 流程。
-func (s *AcmeService) Create(dnsAccountID uint, domains []string, email, ca string, autoRenew bool) (*model.IssuedCert, error) {
+// eabKid/eabKey 仅在 CA 要求外部账户绑定（如 ZeroSSL）时必填，账户注册成功后留存。
+func (s *AcmeService) Create(dnsAccountID uint, domains []string, email, ca string, autoRenew bool, eabKid, eabKey string) (*model.IssuedCert, error) {
 	dir, ok := acmeDirectories[ca]
 	if !ok {
 		return nil, fmt.Errorf("不支持的证书 CA: %s", ca)
@@ -96,6 +97,9 @@ func (s *AcmeService) Create(dnsAccountID uint, domains []string, email, ca stri
 	}
 	if email == "" || !strings.Contains(email, "@") {
 		return nil, errors.New("联系邮箱无效")
+	}
+	if ca == "zerossl" && (eabKid == "" || eabKey == "") {
+		return nil, errors.New("ZeroSSL 要求 EAB 凭证（KID 与 HMAC key），请先在 ZeroSSL 控制台生成 ACME EAB")
 	}
 	if _, err := s.accountRepo.FindByID(dnsAccountID); err != nil {
 		return nil, errors.New("DNS 云账号不存在")
@@ -125,9 +129,19 @@ func (s *AcmeService) Create(dnsAccountID uint, domains []string, email, ca stri
 		defer cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		s.runRenew(ctx, c, domains)
+		s.runRenew(ctx, c, domains, eabOptional(eabKid, eabKey))
 	}()
 	return c, nil
+}
+
+// eabRef 外部账户绑定凭证（注册 ACME 账户时一次性使用）。
+type eabRef struct{ kid, key string }
+
+func eabOptional(kid, key string) *eabRef {
+	if kid == "" || key == "" {
+		return nil
+	}
+	return &eabRef{kid: kid, key: key}
 }
 
 // RenewNow 手动立即续期（沿用原申请参数）。
@@ -145,12 +159,12 @@ func (s *AcmeService) RenewNow(id uint) error {
 		defer cancel()
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		// 重新读取最新记录再执行
+		// 重新读取最新记录再执行；续期时账户已注册，无需 EAB
 		latest, err := s.issued.FindByID(id)
 		if err != nil {
 			return
 		}
-		s.runRenew(ctx, latest, domains)
+		s.runRenew(ctx, latest, domains, nil)
 	}()
 	return nil
 }
@@ -167,7 +181,7 @@ func (s *AcmeService) RunRenewals(withinDays int) (renewed, failed int) {
 		domains := strings.Split(c.SANs, ",")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		s.mu.Lock()
-		err := s.runRenewSync(ctx, c, domains)
+		err := s.runRenewSync(ctx, c, domains, nil)
 		s.mu.Unlock()
 		cancel()
 		if err != nil {
@@ -183,17 +197,17 @@ func (s *AcmeService) RunRenewals(withinDays int) (renewed, failed int) {
 // ---- 申请/续期共用流程 ----
 
 // runRenew 异步入口（panic 兜底后转为失败状态）。
-func (s *AcmeService) runRenew(ctx context.Context, c *model.IssuedCert, domains []string) {
+func (s *AcmeService) runRenew(ctx context.Context, c *model.IssuedCert, domains []string, eab *eabRef) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.L().Error("ACME 流程异常", zap.Any("recover", r), zap.Uint("cert_id", c.ID))
 		}
 	}()
-	_ = s.runRenewSync(ctx, c, domains)
+	_ = s.runRenewSync(ctx, c, domains, eab)
 }
 
 // runRenewSync 同步执行完整 ACME 流程，返回 error 供自动续期统计。
-func (s *AcmeService) runRenewSync(ctx context.Context, c *model.IssuedCert, domains []string) error {
+func (s *AcmeService) runRenewSync(ctx context.Context, c *model.IssuedCert, domains []string, eab *eabRef) error {
 	c.Status = model.CertApplyRenewing
 	if c.ID != 0 {
 		_ = s.issued.Update(c)
@@ -212,7 +226,7 @@ func (s *AcmeService) runRenewSync(ctx context.Context, c *model.IssuedCert, dom
 	}
 
 	// 1. ACME 账户（按 CA+邮箱复用）
-	key, err := s.ensureAccount(ctx, c)
+	key, err := s.ensureAccount(ctx, c, eab)
 	if err != nil {
 		return fail("ACME 账户注册失败: %v", err)
 	}
@@ -338,8 +352,11 @@ func (s *AcmeService) challengeAll(ctx context.Context, client *acme.Client, ord
 		if err != nil {
 			return err
 		}
-		// TXT 的 FQDN 按定义就是 _acme-challenge.<验证域名>（泛域名时 CA 的 Identifier 已是主域）
-		txtFQDN := "_acme-challenge." + strings.TrimSuffix(strings.ToLower(domain), ".")
+		// TXT 的 FQDN：_acme-challenge.<验证域名>。泛域名（*.example.com）时
+		// CA 的 Identifier 仍为 "*.example.com"，但验证记录按 RFC 8555 §8.4
+		// 落在 _acme-challenge.example.com（去掉 "*." 标签），与主域同名共存多值。
+		base := strings.TrimPrefix(strings.ToLower(domain), "*.")
+		txtFQDN := "_acme-challenge." + strings.TrimSuffix(base, ".")
 		// 相对记录名（写入 Zone 时用）：去掉 Zone 后缀
 		recordName := txtFQDN
 		if z := strings.ToLower(strings.TrimSuffix(zone, ".")); strings.HasSuffix(txtFQDN, "."+z) {
@@ -468,7 +485,8 @@ func queryTXTOnNS(ctx context.Context, nsHost, fqdn, expect string) (bool, error
 }
 
 // ensureAccount 获取或注册 ACME 账户（邮箱取证书记录的 AcmeEmail，续期沿用）。
-func (s *AcmeService) ensureAccount(ctx context.Context, c *model.IssuedCert) (*ecdsa.PrivateKey, error) {
+// eab 仅首次注册时使用（ZeroSSL 等要求 EAB 的 CA）；账户已存在时忽略。
+func (s *AcmeService) ensureAccount(ctx context.Context, c *model.IssuedCert, eab *eabRef) (*ecdsa.PrivateKey, error) {
 	existing, err := s.accounts.FindByDirAndEmail(c.DirectoryURL, c.AcmeEmail)
 	if err == nil {
 		return s.decryptAccountKey(existing.KeyEnc)
@@ -484,9 +502,17 @@ func (s *AcmeService) ensureAccount(ctx context.Context, c *model.IssuedCert) (*
 	if err != nil {
 		return nil, err
 	}
+	acct := &acme.Account{Contact: []string{"mailto:" + c.AcmeEmail}}
+	if eab != nil {
+		acct.ExternalAccountBinding = &acme.ExternalAccountBinding{KID: eab.kid, Key: []byte(eab.key)}
+	}
 	client := &acme.Client{Key: accKey, DirectoryURL: c.DirectoryURL}
-	reg, err := client.Register(ctx, &acme.Account{Contact: []string{"mailto:" + c.AcmeEmail}}, func(string) bool { return true })
+	reg, err := client.Register(ctx, acct, func(string) bool { return true })
 	if err != nil {
+		var acmeErr *acme.Error
+		if errors.As(err, &acmeErr) && strings.Contains(strings.ToLower(acmeErr.Detail), "eab") {
+			return nil, fmt.Errorf("CA 要求外部账户绑定（EAB）: %w", err)
+		}
 		return nil, err
 	}
 	keyPEM, err := x509.MarshalECPrivateKey(accKey)
@@ -500,6 +526,13 @@ func (s *AcmeService) ensureAccount(ctx context.Context, c *model.IssuedCert) (*
 	acc := &model.AcmeAccount{
 		DirectoryURL: c.DirectoryURL, Email: c.AcmeEmail,
 		KeyEnc: enc, RegistrationURI: reg.URI,
+	}
+	if eab != nil {
+		acc.EABKid = eab.kid
+		keyEnc, err := s.cipher.Encrypt(eab.key)
+		if err == nil {
+			acc.EABKeyEnc = keyEnc
+		}
 	}
 	if err := s.accounts.Create(acc); err != nil {
 		return nil, err

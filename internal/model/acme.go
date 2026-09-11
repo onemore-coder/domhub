@@ -10,6 +10,8 @@ type AcmeAccount struct {
 	Email           string    `gorm:"size:255;uniqueIndex:idx_acme_uniq,priority:2" json:"email"`
 	KeyEnc          string    `gorm:"type:text" json:"-"` // 账户私钥 PEM（AES-GCM 加密）
 	RegistrationURI string    `gorm:"size:255" json:"registration_uri"`
+	EABKid          string    `gorm:"size:255" json:"eab_kid"`  // 外部账户绑定 KID（ZeroSSL 等要求 EAB 的 CA）
+	EABKeyEnc       string    `gorm:"type:text" json:"-"`       // EAB HMAC key（AES-GCM 加密，注册后留存备查）
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

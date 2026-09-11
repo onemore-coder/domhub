@@ -179,6 +179,53 @@ func (r *DomainRepo) CountExpiringIn(days int) (int64, error) {
 	return n, err
 }
 
+// ProviderCount 厂商分布统计项。
+type ProviderCount struct {
+	Provider string `json:"provider"`
+	Count    int64  `json:"count"`
+}
+
+// CountByProvider 台账按厂商分布（仪表盘）。
+func (r *DomainRepo) CountByProvider() ([]ProviderCount, error) {
+	var out []ProviderCount
+	err := r.db.Model(&model.Domain{}).
+		Select("provider, COUNT(*) AS count").
+		Group("provider").Order("count DESC").
+		Scan(&out).Error
+	return out, err
+}
+
+// DayCount 逐日计数项（到期时间线）。
+type DayCount struct {
+	Date  string `json:"date"` // YYYY-MM-DD
+	Count int64  `json:"count"`
+}
+
+// ExpiryTimeline 未来 N 天逐日到期数（无到期的日期补零，前端可直接渲染）。
+func (r *DomainRepo) ExpiryTimeline(days int) ([]DayCount, error) {
+	today := time.Now().Truncate(24 * time.Hour)
+	deadline := today.AddDate(0, 0, days)
+	var rows []DayCount
+	err := r.db.Model(&model.Domain{}).
+		Select("DATE(expire_at) AS date, COUNT(*) AS count").
+		Where("kind = ? AND expire_at IS NOT NULL AND expire_at >= ? AND expire_at < ?", "domain", today, deadline).
+		Group("DATE(expire_at)").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	byDate := map[string]int64{}
+	for _, r := range rows {
+		byDate[r.Date] = r.Count
+	}
+	out := make([]DayCount, 0, days)
+	for i := 0; i < days; i++ {
+		d := today.AddDate(0, 0, i).Format("2006-01-02")
+		out = append(out, DayCount{Date: d, Count: byDate[d]})
+	}
+	return out, nil
+}
+
 // ListWithExpiry 查询全部有到期时间的注册域名（供到期检查任务用）。
 func (r *DomainRepo) ListWithExpiry() ([]model.Domain, error) {
 	var list []model.Domain

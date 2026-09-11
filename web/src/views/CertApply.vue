@@ -34,6 +34,15 @@
           <div v-if="form.ca === 'letsencrypt_staging'" class="form-hint">
             测试环境证书浏览器不信任，仅用于打通流程；正式使用请选 Let's Encrypt
           </div>
+          <div v-else-if="form.ca === 'zerossl'" class="form-hint">
+            ZeroSSL 要求 EAB 凭证：在其控制台「开发者」页生成 ACME External Account Binding 后填入下方
+          </div>
+        </el-form-item>
+        <el-form-item v-if="form.ca === 'zerossl'" label="EAB KID" required>
+          <el-input v-model="form.eab_kid" placeholder="ZeroSSL EAB Key ID" />
+        </el-form-item>
+        <el-form-item v-if="form.ca === 'zerossl'" label="EAB HMAC Key" required>
+          <el-input v-model="form.eab_key" type="password" show-password placeholder="ZeroSSL EAB HMAC key" />
         </el-form-item>
         <el-form-item label="自动续期">
           <el-switch v-model="form.auto_renew" />
@@ -145,6 +154,7 @@ const applying = ref(false)
 const form = ref({
   dns_account_id: null, primary: '', extra: '',
   email: '', ca: 'letsencrypt', auto_renew: true,
+  eab_kid: '', eab_key: '',
 })
 
 const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS', cloudflare: 'Cloudflare' }[p] || p)
@@ -187,6 +197,8 @@ async function submitApply() {
   if (!f.dns_account_id) return ElMessage.warning('请选择 DNS 云账号')
   if (!f.primary.trim()) return ElMessage.warning('请输入主域名')
   if (!f.email.trim()) return ElMessage.warning('请输入联系邮箱')
+  if (f.ca === 'zerossl' && (!f.eab_kid.trim() || !f.eab_key.trim()))
+    return ElMessage.warning('ZeroSSL 需要填写 EAB KID 与 HMAC Key')
   const domains = [f.primary.trim(), ...f.extra.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)]
   applying.value = true
   try {
@@ -196,6 +208,8 @@ async function submitApply() {
       email: f.email.trim(),
       ca: f.ca,
       auto_renew: f.auto_renew,
+      eab_kid: f.eab_kid.trim() || undefined,
+      eab_key: f.eab_key.trim() || undefined,
     })
     ElMessage.success(res.message || '申请已提交')
     await loadList()
