@@ -244,7 +244,7 @@ async function doChangePassword() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 16px;
+  padding: 0 18px;
   flex-shrink: 0;
 }
 .logo-mark {
@@ -289,6 +289,9 @@ async function doChangePassword() {
   border-radius: 8px;
   margin-bottom: 2px;
   color: var(--el-text-color-regular);
+  /* 覆盖 EP 内联的 level padding，统一左缘：容器 10px + 项 8px = 图标起点 18px，与 Logo 对齐 */
+  padding-left: 8px !important;
+  padding-right: 10px;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 .aside :deep(.el-menu-item:hover),
@@ -308,8 +311,9 @@ async function doChangePassword() {
 .aside :deep(.el-menu-item.is-active .el-icon) {
   color: var(--el-color-primary);
 }
-.aside :deep(.el-menu .el-menu-item) {
-  padding-left: 46px !important;
+/* 仅匹配展开分组内的二级项：18px(父级图标左缘) + 图标 18px + 间距 8px ≈ 文字对齐父级文字 */
+.aside :deep(.el-sub-menu .el-menu .el-menu-item) {
+  padding-left: 34px !important;
   font-size: 13px;
   height: 36px;
   line-height: 36px;
