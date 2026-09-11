@@ -336,7 +336,7 @@ async function saveGrants() {
 }
 .title {
   font-weight: 600;
-  color: #18181b;
+  color: var(--el-text-color-primary);
 }
 .spacer {
   flex: 1;
@@ -359,11 +359,11 @@ async function saveGrants() {
 }
 .grant-account-name {
   font-weight: 600;
-  color: #18181b;
+  color: var(--el-text-color-primary);
 }
 .grant-count {
   font-size: 12px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
 }
 .grant-batch-bar {
   display: flex;

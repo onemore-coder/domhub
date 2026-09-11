@@ -52,6 +52,34 @@
   --dh-card-border: #e9e9ec;
   --dh-sidebar-bg: #fbfbfc;
   --dh-sidebar-border: #ececef;
+  --dh-hover: #f0f0f2;
+  --dh-header-bg: rgba(255, 255, 255, 0.92);
+  --dh-input-bg: #f4f4f5;
+  --dh-card-bg: rgba(255, 255, 255, 0.9);
+  --dh-scrollbar: #d4d4d8;
+  --dh-scrollbar-hover: #a1a1aa;
+}
+
+/* ---------- 深色模式 ---------- */
+html.dark {
+  --el-color-success: #16a34a;
+  --el-color-warning: #d97706;
+  --el-color-danger: #dc2626;
+  --el-color-error: #dc2626;
+  --el-color-info: #a1a1aa;
+
+  --dh-canvas: #131316;
+  --dh-card-border: #2c2c30;
+  --dh-sidebar-bg: #17171a;
+  --dh-sidebar-border: #26262a;
+  --dh-hover: #26262b;
+  --dh-header-bg: rgba(19, 19, 22, 0.92);
+  --dh-input-bg: #26262b;
+  --dh-card-bg: rgba(30, 30, 34, 0.92);
+  --dh-scrollbar: #3f3f46;
+  --dh-scrollbar-hover: #52525b;
+
+  color-scheme: dark;
 }
 
 html,
@@ -73,11 +101,11 @@ body,
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: var(--dh-scrollbar);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+  background: var(--dh-scrollbar-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;

@@ -36,7 +36,7 @@ const routes = [
         path: 'domains',
         name: 'Domains',
         component: () => import('../views/Domains.vue'),
-        meta: { title: '域名台账' },
+        meta: { title: '域名列表' },
       },
       {
         path: 'dns',

@@ -165,7 +165,7 @@ async function doSync(row) {
 }
 
 async function doDelete(row) {
-  await ElMessageBox.confirm(`确定删除账号「${row.name}」？其域名台账数据将一并删除。`, '删除确认', { type: 'warning' })
+  await ElMessageBox.confirm(`确定删除账号「${row.name}」？其域名列表数据将一并删除。`, '删除确认', { type: 'warning' })
   await deleteAccount(row.id)
   ElMessage.success('已删除')
   await load()
@@ -189,10 +189,10 @@ onMounted(load)
 .check-msg {
   margin-left: 8px;
   font-size: 12px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
 }
 .text-muted {
-  color: #a1a1aa;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
 }
 </style>

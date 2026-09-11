@@ -155,11 +155,11 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #18181b;
+  color: var(--el-text-color-primary);
 }
 .stat-label {
   font-size: 13px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
 }
 .panel {
   margin-bottom: 16px;
@@ -173,7 +173,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .panel-sub {
   font-size: 12px;
   font-weight: 400;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
 }
 /* 到期时间线 */
 .timeline-chart {
@@ -208,7 +208,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 }
 .bar-day {
   font-size: 10px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
   white-space: nowrap;
 }
 /* 厂商分布 */
@@ -226,13 +226,13 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .provider-name {
   width: 80px;
   font-size: 13px;
-  color: #18181b;
+  color: var(--el-text-color-primary);
   text-align: right;
 }
 .provider-bar-wrap {
   flex: 1;
   height: 14px;
-  background: #f0f2f5;
+  background: var(--el-fill-color);
   border-radius: 7px;
   overflow: hidden;
 }
@@ -245,7 +245,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
   width: 32px;
   font-size: 13px;
   font-weight: 600;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 /* 最近变更 */
 .recent-list {
@@ -258,12 +258,12 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
   margin-right: 10px;
 }
 .recent-user {
-  color: #71717a;
+  color: var(--el-text-color-secondary);
   margin-right: 10px;
   font-size: 12px;
 }
 .recent-detail {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 12px;
 }
 </style>

@@ -362,7 +362,7 @@ onMounted(load)
 }
 .config-hint {
   font-size: 12px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
   margin-top: 4px;
 }
 </style>

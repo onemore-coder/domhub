@@ -244,7 +244,7 @@ onMounted(load)
 }
 .domain-name {
   font-weight: 600;
-  color: #18181b;
+  color: var(--el-text-color-primary);
 }
 .expire-danger {
   color: #dc2626;
@@ -261,7 +261,7 @@ onMounted(load)
   margin-right: 4px;
 }
 .text-muted {
-  color: #a1a1aa;
+  color: var(--el-text-color-placeholder);
 }
 .owner-tags {
   display: inline-flex;

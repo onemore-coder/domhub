@@ -95,7 +95,7 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f7f7f8;
+  background: var(--dh-canvas);
   background-image:
     radial-gradient(ellipse 80% 60% at 20% 0%, rgba(79, 70, 229, 0.12), transparent),
     radial-gradient(ellipse 60% 50% at 85% 90%, rgba(124, 58, 237, 0.1), transparent);
@@ -103,9 +103,9 @@ async function handleLogin() {
 .login-card {
   width: 380px;
   padding: 44px 36px 24px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--dh-card-bg);
   backdrop-filter: blur(12px);
-  border: 1px solid #e9e9ec;
+  border: 1px solid var(--dh-card-border);
   border-radius: 16px;
   box-shadow: 0 16px 48px rgba(24, 24, 27, 0.08);
 }
@@ -130,13 +130,13 @@ async function handleLogin() {
   margin: 0;
   font-size: 24px;
   font-weight: 700;
-  color: #18181b;
+  color: var(--el-text-color-primary);
   letter-spacing: 0.5px;
 }
 .login-title p {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #71717a;
+  color: var(--el-text-color-secondary);
 }
 .login-btn {
   width: 100%;
@@ -145,13 +145,13 @@ async function handleLogin() {
 .login-tip {
   text-align: center;
   font-size: 12px;
-  color: #a1a1aa;
+  color: var(--el-text-color-placeholder);
 }
 .oauth-divider {
   display: flex;
   align-items: center;
   margin: 4px 0 14px;
-  color: #a1a1aa;
+  color: var(--el-text-color-placeholder);
   font-size: 12px;
 }
 .oauth-divider::before,
@@ -159,13 +159,13 @@ async function handleLogin() {
   content: '';
   flex: 1;
   height: 1px;
-  background: #e4e4e7;
+  background: var(--el-border-color);
 }
 .oauth-divider span {
   padding: 0 12px;
 }
 .github-btn {
-  color: #18181b;
+  color: var(--el-text-color-primary);
   margin-bottom: 16px;
   font-weight: 500;
 }

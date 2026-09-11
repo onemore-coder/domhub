@@ -10,12 +10,12 @@
           </div>
           <div class="field-hint">默认每天 09:00 检查所有注册域名到期时间并按规则告警。示例：每天 9 点 `0 0 9 * * *`、每小时 `0 0 * * * *`</div>
         </el-form-item>
-        <el-form-item label="域名台账自动同步">
+        <el-form-item label="域名列表自动同步">
           <div class="cron-row">
             <el-input v-model="form.sync_domains_cron" placeholder="0 0 6 * * *" style="width: 220px" />
             <el-switch v-model="syncEnabled" active-text="启用" />
           </div>
-          <div class="field-hint">定时从各云厂商同步域名台账。默认关闭（同步也可在台账页手动触发）</div>
+          <div class="field-hint">定时从各云厂商同步域名列表。默认关闭（同步也可在域名列表页手动触发）</div>
         </el-form-item>
         <el-form-item label="DNS 漂移检测">
           <div class="cron-row">

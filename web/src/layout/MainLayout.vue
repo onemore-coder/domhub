@@ -21,7 +21,7 @@
             <el-icon><Collection /></el-icon>
             <span>域名管理</span>
           </template>
-          <el-menu-item index="/domains">域名台账</el-menu-item>
+          <el-menu-item index="/domains">域名列表</el-menu-item>
           <el-menu-item index="/dns">DNS 管理</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="cert-group">
@@ -65,6 +65,11 @@
             :prefix-icon="SearchIcon" @keyup.enter="doSearch"
           />
         </div>
+        <el-tooltip :content="isDark ? '切换到浅色模式' : '切换到深色模式'" placement="bottom">
+          <el-button class="theme-toggle" text circle @click="toggleTheme">
+            <el-icon :size="17"><Sunny v-if="isDark" /><Moon v-else /></el-icon>
+          </el-button>
+        </el-tooltip>
         <el-dropdown @command="handleCommand">
           <span class="user-info">
             <el-avatar :size="30" class="user-avatar">{{ initial }}</el-avatar>
@@ -182,6 +187,14 @@ function goZoneRecord(accountId, zone, recordName) {
 const initial = computed(() => (userStore.user?.username || 'U').charAt(0).toUpperCase())
 const isAdmin = computed(() => userStore.user?.role === 'admin')
 
+// ---- 深浅色模式 ----
+const isDark = ref(localStorage.getItem('domhub-theme') === 'dark')
+function toggleTheme() {
+  isDark.value = !isDark.value
+  document.documentElement.classList.toggle('dark', isDark.value)
+  localStorage.setItem('domhub-theme', isDark.value ? 'dark' : 'light')
+}
+
 onMounted(() => {
   userStore.fetchMe()
 })
@@ -296,7 +309,7 @@ async function doChangePassword() {
 }
 .aside :deep(.el-menu-item:hover),
 .aside :deep(.el-sub-menu__title:hover) {
-  background-color: #f0f0f2;
+  background-color: var(--dh-hover);
   color: var(--el-text-color-primary);
 }
 .aside :deep(.el-menu-item.is-active) {
@@ -325,7 +338,7 @@ async function doChangePassword() {
   display: flex;
   align-items: center;
   height: 56px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--dh-header-bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--el-border-color-light);
   position: sticky;
@@ -345,15 +358,15 @@ async function doChangePassword() {
 }
 .header-search :deep(.el-input__wrapper) {
   border-radius: 999px;
-  background: #f4f4f5;
+  background: var(--dh-input-bg);
   box-shadow: 0 0 0 1px transparent inset;
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 .header-search :deep(.el-input__wrapper:hover) {
-  background: #efeff1;
+  background: var(--dh-hover);
 }
 .header-search :deep(.el-input__wrapper.is-focus) {
-  background: #fff;
+  background: var(--el-bg-color);
   box-shadow: 0 0 0 1.5px var(--el-color-primary-light-5) inset;
 }
 .header-search :deep(.el-input__inner) {
@@ -372,7 +385,7 @@ async function doChangePassword() {
   transition: background-color 0.15s ease;
 }
 .user-info:hover {
-  background: #f0f0f2;
+  background: var(--dh-hover);
 }
 .user-avatar {
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
@@ -405,7 +418,7 @@ async function doChangePassword() {
   transition: background-color 0.12s ease;
 }
 .search-item:hover {
-  background: #f4f4f5;
+  background: var(--dh-input-bg);
 }
 .search-item-icon {
   color: var(--el-color-primary);

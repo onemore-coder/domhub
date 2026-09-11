@@ -8,7 +8,7 @@ export const deleteAccount = (id) => http.delete(`/accounts/${id}`)
 export const checkAccount = (id) => http.post(`/accounts/${id}/check`)
 export const syncAccount = (id) => http.post(`/accounts/${id}/sync`)
 
-// 域名台账
+// 域名列表
 export const listDomains = (params) => http.get('/domains', { params })
 export const syncAllDomains = () => http.post('/domains/sync')
 export const updateDomainMeta = (id, data) => http.patch(`/domains/${id}`, data)

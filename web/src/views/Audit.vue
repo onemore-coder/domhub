@@ -134,7 +134,7 @@ onMounted(() => load(1))
   margin-top: 14px;
 }
 .detail {
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 12px;
 }
