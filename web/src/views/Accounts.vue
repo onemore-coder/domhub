@@ -189,10 +189,10 @@ onMounted(load)
 .check-msg {
   margin-left: 8px;
   font-size: 12px;
-  color: #909399;
+  color: #71717a;
 }
 .text-muted {
-  color: #c0c4cc;
+  color: #a1a1aa;
   font-size: 12px;
 }
 </style>

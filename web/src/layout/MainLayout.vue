@@ -2,15 +2,15 @@
   <el-container class="main-layout">
     <el-aside width="220px" class="aside">
       <div class="logo">
-        <span class="logo-name">DomHub</span>
-        <span class="logo-sub">多云域名管理</span>
+        <div class="logo-mark">D</div>
+        <div class="logo-text">
+          <span class="logo-name">DomHub</span>
+          <span class="logo-sub">多云域名管理</span>
+        </div>
       </div>
       <el-menu
         :default-active="($route.meta.menu || $route.path)"
         router
-        background-color="#1f2d3d"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
       >
         <el-menu-item index="/dashboard">
           <el-icon><Odometer /></el-icon>
@@ -231,51 +231,160 @@ async function doChangePassword() {
 .main-layout {
   height: 100%;
 }
+
+/* ---------- 侧边栏：浅色画布 ---------- */
 .aside {
-  background-color: #1f2d3d;
+  background-color: var(--dh-sidebar-bg);
+  border-right: 1px solid var(--dh-sidebar-border);
+  display: flex;
+  flex-direction: column;
 }
 .logo {
   height: 60px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding-left: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
 }
 .logo-name {
-  color: #fff;
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: 1px;
+  color: var(--el-text-color-primary);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 .logo-sub {
-  color: #6b7a8d;
+  color: var(--el-text-color-placeholder);
   font-size: 11px;
 }
 .aside .el-menu {
   border-right: none;
+  background: transparent;
+  padding: 6px 10px;
+  flex: 1;
+  overflow-y: auto;
 }
+.aside :deep(.el-menu-item),
+.aside :deep(.el-sub-menu__title) {
+  height: 40px;
+  line-height: 40px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  color: var(--el-text-color-regular);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.aside :deep(.el-menu-item:hover),
+.aside :deep(.el-sub-menu__title:hover) {
+  background-color: #f0f0f2;
+  color: var(--el-text-color-primary);
+}
+.aside :deep(.el-menu-item.is-active) {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.aside :deep(.el-menu-item .el-icon),
+.aside :deep(.el-sub-menu__title .el-icon) {
+  color: var(--el-text-color-secondary);
+}
+.aside :deep(.el-menu-item.is-active .el-icon) {
+  color: var(--el-color-primary);
+}
+.aside :deep(.el-menu .el-menu-item) {
+  padding-left: 46px !important;
+  font-size: 13px;
+  height: 36px;
+  line-height: 36px;
+  min-width: 0;
+}
+
+/* ---------- 顶栏 ---------- */
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-bottom: 1px solid #e6e8eb;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--el-border-color-light);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .header-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #1f2d3d;
+  color: var(--el-text-color-primary);
+  min-width: 96px;
 }
 .header-search {
   flex: 1;
-  max-width: 380px;
-  margin: 0 24px;
+  max-width: 420px;
+  margin: 0 auto;
 }
+.header-search :deep(.el-input__wrapper) {
+  border-radius: 999px;
+  background: #f4f4f5;
+  box-shadow: 0 0 0 1px transparent inset;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.header-search :deep(.el-input__wrapper:hover) {
+  background: #efeff1;
+}
+.header-search :deep(.el-input__wrapper.is-focus) {
+  background: #fff;
+  box-shadow: 0 0 0 1.5px var(--el-color-primary-light-5) inset;
+}
+.header-search :deep(.el-input__inner) {
+  height: 34px;
+}
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+.user-info:hover {
+  background: #f0f0f2;
+}
+.user-avatar {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  font-weight: 600;
+}
+.header :deep(.el-dropdown) {
+  margin-left: 12px;
+}
+
+/* ---------- 全局搜索结果 ---------- */
 .search-section {
   font-size: 12px;
   font-weight: 600;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   margin: 14px 0 6px;
 }
 .search-section:first-child {
@@ -285,16 +394,17 @@ async function doChangePassword() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
   cursor: pointer;
   min-width: 0;
+  transition: background-color 0.12s ease;
 }
 .search-item:hover {
-  background: #f5f7fa;
+  background: #f4f4f5;
 }
 .search-item-icon {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 .search-item-type {
   flex-shrink: 0;
@@ -309,32 +419,24 @@ async function doChangePassword() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 .search-item-sub {
   flex-shrink: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-placeholder);
 }
 .search-empty {
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   font-size: 13px;
   padding: 4px 10px 10px;
 }
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: #303133;
-  font-size: 14px;
-}
-.user-avatar {
-  background: #409eff;
-}
+
+/* ---------- 主区域 ---------- */
 .main {
-  background: #f5f7fa;
+  background: var(--dh-canvas);
+  overflow-y: auto;
 }
 </style>

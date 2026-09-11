@@ -109,10 +109,10 @@ onMounted(async () => {
 })
 
 const cards = computed(() => [
-  { label: '域名总数', value: summary.value.domain_total ?? 0, icon: 'Collection', color: '#409eff' },
-  { label: '托管 Zone', value: summary.value.zone_total ?? 0, icon: 'Connection', color: '#67c23a' },
-  { label: '云账号', value: summary.value.account_total ?? 0, icon: 'Cloudy', color: '#e6a23c' },
-  { label: '30 天内到期', value: summary.value.expiring_in_30d ?? 0, icon: 'AlarmClock', color: '#f56c6c' },
+  { label: '域名总数', value: summary.value.domain_total ?? 0, icon: 'Collection', color: '#4f46e5' },
+  { label: '托管 Zone', value: summary.value.zone_total ?? 0, icon: 'Connection', color: '#16a34a' },
+  { label: '云账号', value: summary.value.account_total ?? 0, icon: 'Cloudy', color: '#d97706' },
+  { label: '30 天内到期', value: summary.value.expiring_in_30d ?? 0, icon: 'AlarmClock', color: '#dc2626' },
 ])
 
 const timelineTotal = computed(() => timeline.value.reduce((n, d) => n + d.count, 0))
@@ -126,7 +126,7 @@ const dayLabel = (date) => {
 }
 
 const providerLabel = (p) => ({ aliyun: '阿里云', tencent: '腾讯云', aws: 'AWS', cloudflare: 'Cloudflare' }[p] || p)
-const providerColor = (p) => ({ aliyun: '#ff6a00', tencent: '#0052d9', aws: '#ff9900', cloudflare: '#f6821f' }[p] || '#409eff')
+const providerColor = (p) => ({ aliyun: '#ff6a00', tencent: '#0052d9', aws: '#ff9900', cloudflare: '#f6821f' }[p] || '#4f46e5')
 const maxProvider = computed(() => Math.max(1, ...providers.value.map((p) => p.count)))
 const providerPct = (n) => Math.max(4, Math.round((n / maxProvider.value) * 100))
 
@@ -155,11 +155,11 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #1f2d3d;
+  color: #18181b;
 }
 .stat-label {
   font-size: 13px;
-  color: #909399;
+  color: #71717a;
 }
 .panel {
   margin-bottom: 16px;
@@ -173,7 +173,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .panel-sub {
   font-size: 12px;
   font-weight: 400;
-  color: #909399;
+  color: #71717a;
 }
 /* 到期时间线 */
 .timeline-chart {
@@ -200,15 +200,15 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
   min-width: 6px;
   max-width: 22px;
   border-radius: 3px 3px 0 0;
-  background: #409eff;
+  background: #4f46e5;
   transition: height 0.3s;
 }
 .bar.urgent {
-  background: #f56c6c;
+  background: #dc2626;
 }
 .bar-day {
   font-size: 10px;
-  color: #909399;
+  color: #71717a;
   white-space: nowrap;
 }
 /* 厂商分布 */
@@ -226,7 +226,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
 .provider-name {
   width: 80px;
   font-size: 13px;
-  color: #303133;
+  color: #18181b;
   text-align: right;
 }
 .provider-bar-wrap {
@@ -258,7 +258,7 @@ const fmtTime = (t) => String(t || '').replace('T', ' ').slice(5, 16)
   margin-right: 10px;
 }
 .recent-user {
-  color: #909399;
+  color: #71717a;
   margin-right: 10px;
   font-size: 12px;
 }

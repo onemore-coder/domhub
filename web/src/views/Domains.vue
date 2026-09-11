@@ -244,14 +244,14 @@ onMounted(load)
 }
 .domain-name {
   font-weight: 600;
-  color: #1f2d3d;
+  color: #18181b;
 }
 .expire-danger {
-  color: #f56c6c;
+  color: #dc2626;
   font-weight: 600;
 }
 .expire-warn {
-  color: #e6a23c;
+  color: #d97706;
   font-weight: 600;
 }
 .days-tag {
@@ -261,7 +261,7 @@ onMounted(load)
   margin-right: 4px;
 }
 .text-muted {
-  color: #c0c4cc;
+  color: #a1a1aa;
 }
 .owner-tags {
   display: inline-flex;

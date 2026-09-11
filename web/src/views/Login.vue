@@ -2,6 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-title">
+        <div class="login-mark">D</div>
         <h2>DomHub</h2>
         <p>多云域名与 DNS 统一管理平台</p>
       </div>
@@ -94,43 +95,63 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1f2d3d 0%, #2b4a6f 100%);
+  background: #f7f7f8;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(79, 70, 229, 0.12), transparent),
+    radial-gradient(ellipse 60% 50% at 85% 90%, rgba(124, 58, 237, 0.1), transparent);
 }
 .login-card {
   width: 380px;
-  padding: 40px 36px 24px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  padding: 44px 36px 24px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid #e9e9ec;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(24, 24, 27, 0.08);
 }
 .login-title {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
+}
+.login-mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .login-title h2 {
   margin: 0;
-  font-size: 26px;
-  color: #1f2d3d;
-  letter-spacing: 2px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #18181b;
+  letter-spacing: 0.5px;
 }
 .login-title p {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #909399;
+  color: #71717a;
 }
 .login-btn {
   width: 100%;
+  font-weight: 600;
 }
 .login-tip {
   text-align: center;
   font-size: 12px;
-  color: #c0c4cc;
+  color: #a1a1aa;
 }
 .oauth-divider {
   display: flex;
   align-items: center;
   margin: 4px 0 14px;
-  color: #c0c4cc;
+  color: #a1a1aa;
   font-size: 12px;
 }
 .oauth-divider::before,
@@ -138,14 +159,15 @@ async function handleLogin() {
   content: '';
   flex: 1;
   height: 1px;
-  background: #e4e7ed;
+  background: #e4e4e7;
 }
 .oauth-divider span {
   padding: 0 12px;
 }
 .github-btn {
-  color: #24292f;
+  color: #18181b;
   margin-bottom: 16px;
+  font-weight: 500;
 }
 .github-icon {
   margin-right: 8px;
