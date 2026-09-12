@@ -2,8 +2,10 @@
 package job
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -103,7 +105,10 @@ func (s *Scheduler) jobFunc(name string) func() {
 		}
 	case JobCertCheck:
 		return func() {
-			checked, alerted, err := s.runners.CertSvc.CheckDomains(nil, 0)
+			// 定时触发无上游 ctx，自建带超时的（探测外网 443 可能较慢）
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			checked, alerted, err := s.runners.CertSvc.CheckDomains(ctx, 0)
 			if err != nil {
 				logger.L().Error("证书检查任务失败", zap.Error(err))
 				return

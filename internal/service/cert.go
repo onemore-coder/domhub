@@ -92,10 +92,12 @@ func (s *CertService) discoverHosts(ctx context.Context) ([]certTarget, error) {
 		return nil, err
 	}
 	for _, row := range rows {
-		select {
-		case <-ctx.Done():
-			return targets, ctx.Err()
-		default:
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return targets, ctx.Err()
+			default:
+			}
 		}
 		host := CertHost(row.Name, row.ZoneName)
 		if host == "" {
