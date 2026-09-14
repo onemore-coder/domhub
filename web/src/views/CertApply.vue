@@ -99,7 +99,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="270" fixed="right">
           <template #default="{ row }">
             <el-button link size="small" type="primary" @click="showProgress(row)">进度</el-button>
             <el-button
@@ -119,6 +119,10 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-button
+              link size="small" type="success" :disabled="row.status !== 'issued'"
+              @click="openDeploys(row)"
+            >部署</el-button>
             <el-button link size="small" type="danger" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -137,6 +141,113 @@
         <div v-if="polling" class="polling-hint">正在执行中，每 3 秒自动刷新…</div>
       </div>
     </el-dialog>
+
+    <!-- 证书部署 -->
+    <el-drawer v-model="deployDrawer" :title="`证书部署 · ${deployCert?.primary_domain || ''}`" size="58%">
+      <div class="deploy-toolbar">
+        <el-button type="primary" size="small" @click="openDeployForm()">新增部署目标</el-button>
+        <span class="snap-hint">签发/续期成功后会自动部署到全部目标；也可手动执行</span>
+      </div>
+      <el-empty v-if="!deploys.length" description="还没有部署目标，先新增一个" :image-size="70" />
+      <el-table v-else :data="deploys" size="small">
+        <el-table-column label="名称" min-width="120">
+          <template #default="{ row }">{{ row.name || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="类型" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" effect="plain">{{ deployTypeLabel(row.type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="目标" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ deployTarget(row) }}</template>
+        </el-table-column>
+        <el-table-column label="最近部署" width="160">
+          <template #default="{ row }">
+            <template v-if="row.last_deployed_at">
+              <span>{{ (row.last_deployed_at || '').replace('T', ' ').slice(0, 16) }}</span>
+              <el-tag size="small" :type="row.status === 'success' ? 'success' : 'danger'" class="days-tag">
+                {{ row.status === 'success' ? '成功' : '失败' }}
+              </el-tag>
+            </template>
+            <span v-else class="deploy-never">未执行</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="结果" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span :class="{ 'last-error': row.status === 'failed' }">{{ row.last_message || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="170" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" :loading="deploying === row.id" @click="runDeploy(row)">执行</el-button>
+            <el-button link size="small" @click="openDeployForm(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="removeDeploy(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 部署目标表单 -->
+      <el-dialog v-model="deployFormVisible" :title="deployForm.id ? '编辑部署目标' : '新增部署目标'" width="560px" append-to-body>
+        <el-form :model="deployForm" label-width="100px">
+          <el-form-item label="目标类型" required>
+            <el-select v-model="deployForm.type" style="width: 100%" @change="deployForm.secret = {}">
+              <el-option value="aliyun_cdn" label="阿里云 CDN" />
+              <el-option value="tencent_cdn" label="腾讯云 CDN" />
+              <el-option value="ssh_host" label="SSH 主机（Nginx 等）" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="名称">
+            <el-input v-model="deployForm.name" placeholder="便于识别，如 官网主站 / CDN 华北" />
+          </el-form-item>
+
+          <template v-if="['aliyun_cdn', 'tencent_cdn'].includes(deployForm.type)">
+            <el-form-item label="云账号" required>
+              <el-select v-model="deployForm.account_id" style="width: 100%"
+                :placeholder="`选择 ${deployForm.type === 'aliyun_cdn' ? '阿里云' : '腾讯云'} 账号（需有 CDN 权限）`">
+                <el-option
+                  v-for="a in cdnAccounts" :key="a.id" :value="a.id"
+                  :label="`${a.name}（${providerLabel(a.provider)}）`"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="CDN 域名" required>
+              <el-input v-model="deployForm.config.domain" placeholder="已在 CDN 上配置的加速域名，如 static.example.com" />
+            </el-form-item>
+          </template>
+
+          <template v-else-if="deployForm.type === 'ssh_host'">
+            <el-form-item label="主机" required>
+              <el-input v-model="deployForm.config.host" placeholder="IP 或主机名" style="width: 65%" />
+              <el-input-number v-model="deployForm.config.port" :min="1" :max="65535" placeholder="22" controls-position="right" style="width: 30%; margin-left: 5%" />
+            </el-form-item>
+            <el-form-item label="用户名" required>
+              <el-input v-model="deployForm.config.user" placeholder="root" />
+            </el-form-item>
+            <el-form-item label="证书路径" required>
+              <el-input v-model="deployForm.config.cert_path" placeholder="/etc/nginx/ssl/example.com.fullchain.pem" />
+            </el-form-item>
+            <el-form-item label="私钥路径" required>
+              <el-input v-model="deployForm.config.key_path" placeholder="/etc/nginx/ssl/example.com.key" />
+            </el-form-item>
+            <el-form-item label="reload 命令">
+              <el-input v-model="deployForm.config.reload_cmd" placeholder="nginx -s reload（留空则只写文件）" />
+            </el-form-item>
+            <el-form-item label="登录密码">
+              <el-input v-model="deployForm.secret.password" type="password" show-password
+                :placeholder="deployForm.id ? '留空沿用原密码' : '密码 / 私钥至少填一项'" />
+            </el-form-item>
+            <el-form-item label="SSH 私钥">
+              <el-input v-model="deployForm.secret.private_key" type="textarea" :rows="3"
+                :placeholder="deployForm.id ? '留空沿用原私钥' : '-----BEGIN OPENSSH PRIVATE KEY-----'" />
+            </el-form-item>
+          </template>
+        </el-form>
+        <template #footer>
+          <el-button @click="deployFormVisible = false">取消</el-button>
+          <el-button type="primary" :loading="deploySaving" @click="saveDeploy">保存</el-button>
+        </template>
+      </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -144,7 +255,11 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { listAccounts, listCertCAs, listIssuedCerts, applyCert, getIssuedCert, renewIssuedCert, setIssuedCertAutoRenew, deleteIssuedCert } from '../api/domhub'
+import {
+  listAccounts, listCertCAs, listIssuedCerts, applyCert, getIssuedCert, renewIssuedCert,
+  setIssuedCertAutoRenew, deleteIssuedCert,
+  listCertDeploys, createCertDeploy, updateCertDeploy, deleteCertDeploy, runCertDeploy,
+} from '../api/domhub'
 
 const accounts = ref([])
 const cas = ref([])
@@ -300,6 +415,117 @@ async function download(row, type) {
     ElMessage.error('下载失败，请稍后重试')
   }
 }
+
+// ---- 证书部署 ----
+const deployDrawer = ref(false)
+const deployCert = ref(null)
+const deploys = ref([])
+const deploying = ref(null)
+const deployFormVisible = ref(false)
+const deploySaving = ref(false)
+
+const emptyDeployForm = () => ({
+  id: 0, type: 'aliyun_cdn', name: '', account_id: null,
+  config: {}, secret: {},
+})
+const deployForm = ref(emptyDeployForm())
+
+const cdnAccounts = computed(() =>
+  accounts.value.filter((a) => ['aliyun', 'tencent'].includes(a.provider)),
+)
+
+const deployTypeLabel = (t) => ({
+  aliyun_cdn: '阿里云 CDN', tencent_cdn: '腾讯云 CDN', ssh_host: 'SSH 主机',
+}[t] || t)
+
+const deployTarget = (row) => {
+  try {
+    const cfg = typeof row.config === 'string' ? JSON.parse(row.config) : row.config || {}
+    if (row.type === 'ssh_host') return `${cfg.user}@${cfg.host}:${cfg.port || 22}`
+    return cfg.domain || '—'
+  } catch { return '—' }
+}
+
+async function openDeploys(row) {
+  deployCert.value = row
+  deployDrawer.value = true
+  await loadDeploys()
+}
+
+async function loadDeploys() {
+  if (!deployCert.value) return
+  try {
+    const res = await listCertDeploys(deployCert.value.id)
+    deploys.value = res.data || []
+  } catch { /* 拦截器已提示 */ }
+}
+
+function openDeployForm(row) {
+  if (row) {
+    const cfg = typeof row.config === 'string' ? JSON.parse(row.config) : row.config || {}
+    deployForm.value = {
+      id: row.id, type: row.type, name: row.name || '',
+      account_id: row.account_id || null,
+      config: { ...cfg }, secret: {},
+    }
+  } else {
+    deployForm.value = emptyDeployForm()
+  }
+  deployFormVisible.value = true
+}
+
+async function saveDeploy() {
+  const f = deployForm.value
+  if (!f.type) return ElMessage.warning('请选择目标类型')
+  if (['aliyun_cdn', 'tencent_cdn'].includes(f.type)) {
+    if (!f.account_id) return ElMessage.warning('请选择云账号')
+    if (!f.config.domain?.trim()) return ElMessage.warning('请填写 CDN 域名')
+  } else if (f.type === 'ssh_host') {
+    if (!f.config.host?.trim() || !f.config.user?.trim()
+      || !f.config.cert_path?.trim() || !f.config.key_path?.trim()) {
+      return ElMessage.warning('主机/用户名/证书路径/私钥路径均为必填')
+    }
+  }
+  deploySaving.value = true
+  try {
+    const payload = {
+      cert_id: deployCert.value.id, type: f.type, name: f.name.trim(),
+      account_id: f.account_id || 0, config: f.config, secret: f.secret,
+    }
+    if (f.id) await updateCertDeploy(f.id, payload)
+    else await createCertDeploy(deployCert.value.id, payload)
+    ElMessage.success('部署目标已保存')
+    deployFormVisible.value = false
+    await loadDeploys()
+  } catch { /* 拦截器已提示 */ } finally {
+    deploySaving.value = false
+  }
+}
+
+async function runDeploy(row) {
+  deploying.value = row.id
+  try {
+    await runCertDeploy(row.id)
+    await loadDeploys()
+    const cur = deploys.value.find((d) => d.id === row.id)
+    if (cur?.status === 'success') ElMessage.success('部署成功')
+    else ElMessage.error(cur?.last_message || '部署失败，详见结果列')
+  } catch { /* 拦截器已提示 */ } finally {
+    deploying.value = null
+  }
+}
+
+async function removeDeploy(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除部署目标「${row.name || deployTarget(row)}」？`, '删除部署目标',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+  } catch { return }
+  try {
+    await deleteCertDeploy(row.id)
+    ElMessage.success('已删除')
+    await loadDeploys()
+  } catch { /* 拦截器已提示 */ }
+}
 </script>
 
 <style scoped>
@@ -361,5 +587,19 @@ async function download(row, type) {
 }
 .dl-dropdown {
   margin: 0 10px;
+}
+.deploy-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.snap-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.deploy-never {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

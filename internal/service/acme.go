@@ -67,6 +67,10 @@ type AcmeService struct {
 	accountRepo *repo.CloudAccountRepo
 	cipher      *cryptox.Cipher
 
+	// OnIssued 签发/续期成功后的回调（部署钩子），由路由层注入。
+	// 回调内部应自行异步执行，不阻塞 ACME 流程。
+	OnIssued func(certID uint)
+
 	mu sync.Mutex // 串行化 ACME 流程，避免同账户并发注册/触发 CA 限流
 }
 
@@ -304,7 +308,14 @@ func (s *AcmeService) runRenewSync(ctx context.Context, c *model.IssuedCert, dom
 	} else {
 		log("🎉 签发成功，有效期至 %s（CA: %s）", leaf.NotAfter.Format("2006-01-02"), c.CAName)
 	}
-	return s.issued.Update(c)
+	if err := s.issued.Update(c); err != nil {
+		return err
+	}
+	// 触发部署钩子（CDN/主机下发），异步执行不阻塞
+	if s.OnIssued != nil {
+		s.OnIssued(c.ID)
+	}
+	return nil
 }
 
 // challengeAll 对订单内全部授权执行 DNS-01（含 TXT 清理兜底）。

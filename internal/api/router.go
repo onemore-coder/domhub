@@ -68,6 +68,11 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	acmeSvc := service.NewAcmeService(
 		repo.NewAcmeAccountRepo(db), repo.NewIssuedCertRepo(db),
 		repo.NewZoneRepo(db), dnsSvc, accountRepo, cipher)
+	// 证书部署（三期）：签发/续期成功后自动下发到 CDN / SSH 主机
+	deploySvc := service.NewCertDeployService(
+		repo.NewCertDeployRepo(db), repo.NewIssuedCertRepo(db),
+		accountRepo, auditRepo, cipher, alertRepo)
+	acmeSvc.OnIssued = func(certID uint) { go deploySvc.RunForCert(certID) }
 	if scheduleApplier != nil {
 		settingsSvc.SetScheduler(scheduleApplier) // 设置页保存任务计划后热生效
 	}
@@ -84,6 +89,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	certH := handler.NewCertHandler(certSvc)
 	acmeH := handler.NewAcmeHandler(acmeSvc)
 	templateH := handler.NewTemplateHandler(repo.NewRecordTemplateRepo(db), dnsSvc, zoneSvc)
+	deployH := handler.NewDeployHandler(deploySvc)
 
 	adminOnly := middleware.RequireRole(model.RoleAdmin)
 	writeAccess := middleware.RequireRole(model.RoleAdmin, model.RoleOperator)
@@ -173,6 +179,13 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.PUT("/certs-issued/:id/auto-renew", writeAccess, acmeH.SetAutoRenew)
 		protected.DELETE("/certs-issued/:id", writeAccess, acmeH.Delete)
 		protected.GET("/certs-issued/:id/download", acmeH.Download)
+
+		// 证书部署（CDN / SSH 主机下发）
+		protected.GET("/certs-issued/:id/deploys", deployH.List)
+		protected.POST("/certs-issued/:id/deploys", writeAccess, deployH.Save)
+		protected.PUT("/certs/deploys/:id", writeAccess, deployH.Save)
+		protected.DELETE("/certs/deploys/:id", writeAccess, deployH.Delete)
+		protected.POST("/certs/deploys/:id/run", writeAccess, deployH.Run)
 
 		// M2：DNS 解析管理（写权限在 service 层按 Zone 授权判定）
 		// zones/records 走本地镜像（秒开），sync 回源厂商 API；记录操作仍实时

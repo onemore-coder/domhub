@@ -92,3 +92,10 @@ export const renewIssuedCert = (id) => http.post(`/certs-issued/${id}/renew`)
 export const setIssuedCertAutoRenew = (id, autoRenew) => http.put(`/certs-issued/${id}/auto-renew`, { auto_renew: autoRenew })
 export const deleteIssuedCert = (id) => http.delete(`/certs-issued/${id}`)
 export const downloadIssuedCert = (id, type) => `/api/v1/certs-issued/${id}/download?type=${type}`
+
+// 证书部署（CDN / SSH 主机下发）
+export const listCertDeploys = (certId) => http.get(`/certs-issued/${certId}/deploys`)
+export const createCertDeploy = (certId, data) => http.post(`/certs-issued/${certId}/deploys`, data)
+export const updateCertDeploy = (id, data) => http.put(`/certs/deploys/${id}`, data)
+export const deleteCertDeploy = (id) => http.delete(`/certs/deploys/${id}`)
+export const runCertDeploy = (id) => http.post(`/certs/deploys/${id}/run`)
