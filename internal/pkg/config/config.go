@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -64,8 +65,18 @@ func Load() *Config {
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
 	if err := v.ReadInConfig(); err != nil {
-		// 配置文件可选：不存在时使用默认值 + 环境变量
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// 配置文件缺失时，仅当 DB 至少一项通过环境变量显式指定才允许启动
+			// （Docker / 环境变量部署场景）；否则拒绝启动，避免从错误的工作目录
+			// 启动时静默回退到 sqlite 空库（曾导致"数据全没了"的假象）。
+			if os.Getenv("DOMHUB_DB_DRIVER") == "" && os.Getenv("DOMHUB_DB_DSN") == "" {
+				cwd, _ := os.Getwd()
+				panic(fmt.Sprintf(
+					"未找到配置文件 config.yaml（已在 %s 与其 ./config 子目录下查找，当前工作目录: %s）。"+
+						"请在项目目录启动，或显式设置 DOMHUB_DB_DRIVER / DOMHUB_DB_DSN 以环境变量模式运行。",
+					cwd, cwd))
+			}
+		} else {
 			panic("读取配置文件失败: " + err.Error())
 		}
 	}

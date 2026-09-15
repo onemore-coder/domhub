@@ -2,6 +2,18 @@
 
 本项目的所有重要变更都记录在本文件中。
 
+## [Unreleased]
+
+### 修复
+
+- **阿里云 CDN 部署**：补必填参数 `SSLProtocol=on`（此前报 MissingSSLProtocol）；私钥为 PKCS#1 格式时自动转 PKCS#8
+- **腾讯云 CDN 部署**：接口名改为 `UploadCertificate`（旧名 `UploadServerCertificate` 在 SSL 2019-12-05 版已下线，报 InvalidAction），响应字段同步更新
+
+### 新增
+
+- **`/healthz` 健康检查**：免鉴权探活接口，带 DB 连通性探测（2s 超时），DB 异常返回 503
+- **启动 fail-fast**：`config.yaml` 缺失且未显式设置 `DOMHUB_DB_DRIVER` / `DOMHUB_DB_DSN` 时拒绝启动，杜绝从错误工作目录启动时静默回退 sqlite 空库
+
 ## [v0.7.0] - 2026-09-14
 
 ### 新增

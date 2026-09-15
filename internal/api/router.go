@@ -2,9 +2,11 @@
 package api
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -243,6 +245,18 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.GET("/settings", adminOnly, settingsH.Get)
 		protected.PUT("/settings/schedules", adminOnly, settingsH.Update)
 	}
+
+	// 健康检查（免鉴权）：探活 + DB 连通性；DB 不可用时返回 503
+	r.GET("/healthz", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.WithContext(ctx).Exec("SELECT 1").Error; err != nil {
+			logger.L().Error("健康检查失败：数据库不可用", zap.Error(err))
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "degraded", "db": "error"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "db": "ok"})
+	})
 
 	// 前端静态资源（embed），非 /api 路径回退到 index.html（SPA）
 	if staticFS != nil {
