@@ -25,18 +25,22 @@ func NewCertDeployClient(cred provider.Credential) *Provider {
 }
 
 // UploadServerCert 上传证书到 SSL 云证书，返回 CertId。
+// 注意：2019-12-05 版接口名为 UploadCertificate（UploadServerCertificate 已下线），
+// 响应字段为 CertificateId。
 func (p *Provider) UploadServerCert(ctx context.Context, certName, chainPEM, keyPEM string) (string, error) {
-	out, err := p.call(ctx, targetSSL, "UploadServerCertificate", map[string]any{
+	out, err := p.call(ctx, targetSSL, "UploadCertificate", map[string]any{
 		"CertificatePublicKey":  chainPEM,
 		"CertificatePrivateKey": keyPEM,
+		"CertificateType":       "SVR",
+		"CertificateUse":        "CDN",
 		"Alias":                 certName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("上传云证书失败: %w", err)
 	}
-	certID := jsonStrField(out, "CertId")
+	certID := jsonStrField(out, "CertificateId")
 	if certID == "" {
-		return "", fmt.Errorf("上传云证书成功但响应缺少 CertId")
+		return "", fmt.Errorf("上传云证书成功但响应缺少 CertificateId")
 	}
 	return certID, nil
 }
