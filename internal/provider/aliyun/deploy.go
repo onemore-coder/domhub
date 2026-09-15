@@ -7,8 +7,10 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,13 +109,54 @@ func (p *Provider) callCDN(ctx context.Context, action string, extra map[string]
 }
 
 // SetCDNCert 上传证书并绑定到 CDN 域名（CertType=upload）。
+// SSLProtocol 为必填参数（MissingSSLProtocol），固定传 on 开启 HTTPS。
 func (p *Provider) SetCDNCert(ctx context.Context, domain, certName, chainPEM, keyPEM string) error {
-	_, err := p.callCDN(ctx, "SetCdnDomainSSLCertificate", map[string]string{
-		"DomainName": domain,
-		"CertName":   certName,
-		"CertType":   "upload",
-		"SSLPub":     chainPEM,
-		"SSLPri":     keyPEM,
+	pri, err := ensurePKCS8(keyPEM)
+	if err != nil {
+		return fmt.Errorf("私钥格式转换失败: %w", err)
+	}
+	_, err = p.callCDN(ctx, "SetCdnDomainSSLCertificate", map[string]string{
+		"DomainName":  domain,
+		"CertName":    certName,
+		"CertType":    "upload",
+		"SSLProtocol": "on",
+		"SSLPub":      chainPEM,
+		"SSLPri":      pri,
 	})
 	return err
+}
+
+// ensurePKCS8 将 PKCS#1（BEGIN RSA PRIVATE KEY）私钥转换为阿里云要求的
+// PKCS#8（BEGIN PRIVATE KEY）；已是 PKCS#8 / EC 格式则原样返回。
+func ensurePKCS8(pemStr string) (string, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return "", fmt.Errorf("私钥不是有效的 PEM")
+	}
+	switch block.Type {
+	case "PRIVATE KEY": // 已是 PKCS#8
+		return pemStr, nil
+	case "RSA PRIVATE KEY": // PKCS#1 → PKCS#8
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return "", err
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return "", err
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), nil
+	case "EC PRIVATE KEY":
+		key, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return "", err
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return "", err
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), nil
+	default:
+		return "", fmt.Errorf("不支持的私钥类型: %s", block.Type)
+	}
 }
