@@ -2,17 +2,28 @@
 
 本项目的所有重要变更都记录在本文件中。
 
-## [Unreleased]
+## [v0.7.1] - 2026-09-16
+
+### 新增
+
+- **两步验证（2FA / TOTP）**：零依赖 RFC 6238 实现（兼容 Google Authenticator 等验证器 App）；登录两段式（密码 → 6 位动态码），绑定走二维码扫码，关闭需动态码确认，管理员可重置；TOTP 密钥 AES-GCM 加密存储
+- **API 接口目录**：Token 页内置全部 60+ 接口分组展示，带 METHOD 徽标、中文说明、curl 示例一键复制与搜索过滤
+- **配置导出**：域名列表、单 Zone 解析记录一键导出 CSV（UTF-8 BOM，Excel 直开不乱码）
+- **审计增强**：操作列统一中文徽标；新增 Zone 精确筛选；`dns.update` 记录变更前后状态 diff，详情弹窗可视化对比
+- **移动端适配**：≤768px 侧边栏收进抽屉，弹窗与工具栏自适应
 
 ### 修复
 
 - **阿里云 CDN 部署**：补必填参数 `SSLProtocol=on`（此前报 MissingSSLProtocol）；私钥为 PKCS#1 格式时自动转 PKCS#8
 - **腾讯云 CDN 部署**：接口名改为 `UploadCertificate`（旧名 `UploadServerCertificate` 在 SSL 2019-12-05 版已下线，报 InvalidAction），响应字段同步更新
+- **配置导出文件名**：`Content-Disposition` 引号未闭合导致文件名后缀异常（`csv_`），改为 ASCII 兜底名 + `filename*=UTF-8''` 中文名
+- **2FA 登录不跳转**：动态码验证通过后正式 token 未落盘，导致路由守卫拦回登录页
 
-### 新增
+### 运维健壮性
 
 - **`/healthz` 健康检查**：免鉴权探活接口，带 DB 连通性探测（2s 超时），DB 异常返回 503
 - **启动 fail-fast**：`config.yaml` 缺失且未显式设置 `DOMHUB_DB_DRIVER` / `DOMHUB_DB_DSN` 时拒绝启动，杜绝从错误工作目录启动时静默回退 sqlite 空库
+- **CI**：Go 版本与 go.mod 对齐（1.25 → 1.26）
 
 ## [v0.7.0] - 2026-09-14
 
