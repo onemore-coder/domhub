@@ -181,8 +181,22 @@ func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.Reco
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// 抓取变更前状态用于审计 diff（拉取失败不阻断更新）
+	var before *provider.RecordInfo
+	if olds, lerr := p.ListRecords(ctx, zone); lerr == nil {
+		for i := range olds {
+			if olds[i].ID == rec.ID {
+				before = &olds[i]
+				break
+			}
+		}
+	}
 	err = p.UpdateRecord(ctx, zone, rec)
-	s.writeAudit(op.ID, op.Username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
+	detail := any(rec)
+	if before != nil {
+		detail = map[string]any{"before": before, "after": rec}
+	}
+	s.writeAudit(op.ID, op.Username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, detail, err)
 	if err == nil {
 		s.notifyChange(accountID, zone)
 	}

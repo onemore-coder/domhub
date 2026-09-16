@@ -9,6 +9,7 @@
         </el-tag>
         <span class="sync-hint" v-if="syncedAtLabel">镜像同步于 {{ syncedAtLabel }}</span>
         <el-button :icon="Refresh" :loading="syncing" @click="syncFromCloud">同步云端</el-button>
+        <el-button :icon="Download" @click="exportCsv">导出 CSV</el-button>
         <div class="spacer" />
         <el-button type="primary" :icon="Plus" @click="openCreate">添加记录</el-button>
         <el-dropdown @command="handleTemplateCommand" class="tpl-dropdown">
@@ -346,7 +347,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Back, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { ArrowDown, Back, Download, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
   listAccounts, listDNSRecordsCached, syncDNSRecords,
@@ -362,6 +363,25 @@ const router = useRouter()
 // Zone 上下文来自路由：/dns/records?account_id=1&zone=example.com[&snapshot=1]
 const accountId = ref(Number(route.query.account_id) || 0)
 const zoneName = ref(String(route.query.zone || ''))
+
+// 导出当前 Zone 解析记录 CSV（走 fetch + Bearer 头）
+async function exportCsv() {
+  try {
+    const res = await fetch(`/api/v1/dns/records/export?account_id=${accountId.value}&zone=${encodeURIComponent(zoneName.value)}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}` },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = decodeURIComponent((res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''(.+)/)?.[1] || 'records.csv')
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    ElMessage.error('导出失败，请稍后重试')
+  }
+}
 
 const accountName = ref('')
 const provider = ref('')

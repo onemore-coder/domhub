@@ -27,7 +27,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
-	list, total, err := h.audit.List(c.Query("action"), c.Query("username"), c.Query("keyword"), page, pageSize)
+	list, total, err := h.audit.List(c.Query("action"), c.Query("username"), c.Query("zone"), c.Query("keyword"), page, pageSize)
 	if err != nil {
 		c.JSON(500, gin.H{"code": 500, "message": err.Error()})
 		return

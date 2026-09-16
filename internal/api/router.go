@@ -81,6 +81,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 
 	accountH := handler.NewCloudAccountHandler(accountSvc)
 	domainH := handler.NewDomainHandler(domainRepo, accountSvc, repo.NewZoneRepo(db))
+	exportH := handler.NewExportHandler(domainRepo, zoneSvc)
 	alertH := handler.NewAlertHandler(alertRepo, alertSvc)
 	dnsH := handler.NewDNSHandler(dnsSvc, zoneSvc, certSvc)
 	auditH := handler.NewAuditHandler(auditRepo)
@@ -141,6 +142,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		}
 
 		protected.GET("/domains", domainH.List)
+		protected.GET("/domains/export", exportH.Domains)
 		protected.POST("/domains/sync", writeAccess, domainH.SyncAll)
 
 		channelGroup := protected.Group("/channels")
@@ -194,6 +196,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.GET("/dns/zones", zoneH.ListCached)
 		protected.POST("/dns/zones/refresh", writeAccess, zoneH.Refresh)
 		protected.GET("/dns/records-cached", dnsH.ListCached)
+		protected.GET("/dns/records/export", exportH.Records)
 		protected.POST("/dns/records/sync", writeAccess, dnsH.SyncRecords)
 		protected.GET("/dns/records", dnsH.ListRecords)
 		protected.POST("/dns/records", writeAccess, dnsH.CreateRecord)

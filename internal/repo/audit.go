@@ -17,14 +17,18 @@ func (r *AuditRepo) Create(log *model.AuditLog) error {
 	return r.db.Create(log).Error
 }
 
-// List 分页查询，可按 action / username / 关键字过滤。
-func (r *AuditRepo) List(action, username, keyword string, page, pageSize int) ([]model.AuditLog, int64, error) {
+// List 分页查询，可按 action / username / 域名 / 关键字过滤。
+func (r *AuditRepo) List(action, username, zone, keyword string, page, pageSize int) ([]model.AuditLog, int64, error) {
 	q := r.db.Model(&model.AuditLog{})
 	if action != "" {
 		q = q.Where("action LIKE ?", action+"%")
 	}
 	if username != "" {
 		q = q.Where("username = ?", username)
+	}
+	if zone != "" {
+		// DNS 资源格式为 provider/zone/TYPE name，按 /zone/ 段精确匹配
+		q = q.Where("resource LIKE ?", "%/"+zone+"/%")
 	}
 	if keyword != "" {
 		q = q.Where("resource LIKE ? OR detail LIKE ?", "%"+keyword+"%", "%"+keyword+"%")

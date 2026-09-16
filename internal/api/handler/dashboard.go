@@ -46,7 +46,7 @@ func (h *DashboardHandler) Stats(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return
 	}
-	recent, _, err := h.audits.List("", "", "", 1, 12)
+	recent, _, err := h.audits.List("", "", "", "", 1, 12)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
 		return

@@ -20,9 +20,14 @@
           </el-select>
           <el-button @click="load">查询</el-button>
         </div>
-        <el-button type="primary" plain :loading="syncing" @click="doSyncAll">
-          <el-icon><Refresh /></el-icon>&nbsp;同步全部账号
-        </el-button>
+        <div class="actions">
+          <el-button @click="exportCsv">
+            <el-icon><Download /></el-icon>&nbsp;导出 CSV
+          </el-button>
+          <el-button type="primary" plain :loading="syncing" @click="doSyncAll">
+            <el-icon><Refresh /></el-icon>&nbsp;同步全部账号
+          </el-button>
+        </div>
       </div>
     </el-card>
 
@@ -134,6 +139,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Download, Refresh } from '@element-plus/icons-vue'
 import { listDomains, syncAllDomains, updateDomainMeta } from '../api/domhub'
 
 const router = useRouter()
@@ -159,6 +165,30 @@ const filters = reactive({
   page: 1,
   page_size: 20,
 })
+
+// 导出 CSV（带当前筛选条件）：走 fetch + Bearer 头，浏览器原生跳转带不上 Authorization
+async function exportCsv() {
+  const qs = new URLSearchParams()
+  if (filters.keyword) qs.set('keyword', filters.keyword)
+  if (filters.provider) qs.set('provider', filters.provider)
+  if (filters.kind) qs.set('kind', filters.kind)
+  if (filters.expiring_days) qs.set('expiring_days', filters.expiring_days)
+  try {
+    const res = await fetch(`/api/v1/domains/export?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}` },
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = decodeURIComponent((res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''(.+)/)?.[1] || 'domains.csv')
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch {
+    ElMessage.error('导出失败，请稍后重试')
+  }
+}
 
 const formatDate = (t) => (t ? new Date(t).toLocaleDateString('zh-CN') : '—')
 const formatTime = (t) => (t ? new Date(t).toLocaleString('zh-CN') : '—')
