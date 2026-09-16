@@ -7,6 +7,10 @@
           <el-option label="DNS 新增" value="dns.create" />
           <el-option label="DNS 修改" value="dns.update" />
           <el-option label="DNS 删除" value="dns.delete" />
+          <el-option label="DNS 批量" value="dns.push" />
+          <el-option label="证书部署" value="cert.deploy" />
+          <el-option label="用户管理" value="user" />
+          <el-option label="Zone 授权" value="user.grant" />
         </el-select>
         <el-input
           v-model="keyword" placeholder="搜索资源 / 详情" clearable style="width: 240px"
@@ -70,19 +74,31 @@ const total = ref(0)
 const action = ref('')
 const keyword = ref('')
 
-const actionLabel = (a) =>
-  ({
-    'dns.create': 'DNS 新增',
-    'dns.update': 'DNS 修改',
-    'dns.delete': 'DNS 删除',
-    'dns.push': 'DNS 批量',
-  }[a] || a)
+const ACTION_LABELS = {
+  'dns.create': 'DNS 新增',
+  'dns.update': 'DNS 修改',
+  'dns.delete': 'DNS 删除',
+  'dns.push': 'DNS 批量',
+  'cert.deploy': '证书部署',
+  'user.create': '新增用户',
+  'user.update': '修改用户',
+  'user.delete': '删除用户',
+  'user.grant': 'Zone 授权',
+}
+
+const actionLabel = (a) => ACTION_LABELS[a] || a
 
 const actionTag = (a) =>
   ({
     'dns.create': 'success',
     'dns.update': 'warning',
     'dns.delete': 'danger',
+    'dns.push': 'warning',
+    'cert.deploy': 'primary',
+    'user.create': 'success',
+    'user.update': 'warning',
+    'user.delete': 'danger',
+    'user.grant': 'primary',
   }[a] || 'info')
 
 function formatTime(t) {
