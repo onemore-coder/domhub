@@ -28,8 +28,11 @@ func NewExportHandler(domains *repo.DomainRepo, zoneSvc *service.ZoneService) *E
 // writeCSV 以 UTF-8 BOM 输出 CSV（Excel 直接打开不乱码）。
 func writeCSV(c *gin.Context, filename string, rows [][]string) {
 	c.Header("Content-Type", "text/csv; charset=utf-8")
+	// filename= 只放 ASCII 兜底名（RFC 6265 要求该参数为 ASCII）；
+	// filename*= 携带 UTF-8 中文名，现代浏览器优先读取它
+	ascii := "export-" + time.Now().Format("20060102") + ".csv"
 	c.Header("Content-Disposition",
-		`attachment; filename="`+filename+`; filename*=UTF-8''`+url.PathEscape(filename)+`"`)
+		`attachment; filename="`+ascii+`"; filename*=UTF-8''`+url.PathEscape(filename))
 	c.Status(http.StatusOK)
 	_, _ = c.Writer.Write([]byte("\ufeff")) // UTF-8 BOM：Excel 直接打开不乱码
 	w := csv.NewWriter(c.Writer)
