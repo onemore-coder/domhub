@@ -213,3 +213,47 @@ body,
 .el-main {
   --el-main-padding: 20px 24px;
 }
+
+/* ---------- 移动端适配（≤768px） ---------- */
+@media (max-width: 768px) {
+  /* 弹窗全屏化（!important 覆盖 EP 的内联 width） */
+  .el-dialog {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    margin-top: 6vh !important;
+  }
+  .el-message-box {
+    width: 92vw !important;
+    max-width: 92vw !important;
+  }
+  .el-drawer.ltr {
+    width: 82vw !important;
+    max-width: 280px !important;
+  }
+
+  /* 主区留白收窄 */
+  .el-main {
+    --el-main-padding: 12px 12px 20px;
+  }
+
+  /* 工具栏允许换行（各页面 scoped 的 .toolbar/.filters 不设 wrap，这里兜底） */
+  .toolbar,
+  .filters,
+  .snap-toolbar,
+  .tpl-toolbar,
+  .pager {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* 表格容器可横向滚动，避免内容挤压 */
+  .el-table {
+    font-size: 13px;
+  }
+
+  /* 分页精简 */
+  .el-pagination {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
