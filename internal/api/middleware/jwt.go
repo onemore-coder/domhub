@@ -62,6 +62,11 @@ func JWT(secret string, lookup RoleLookup, apiTokenLookup ApiTokenLookup) gin.Ha
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录已失效，请重新登录"})
 			return
 		}
+		// 2FA 登录中间态预令牌：只能用于完成两步验证接口，不能访问业务接口
+		if claims.Typ == "2fa" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "请先完成两步验证"})
+			return
+		}
 
 		role := claims.Role
 		if role == "" && lookup != nil {

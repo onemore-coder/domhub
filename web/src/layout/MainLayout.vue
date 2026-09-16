@@ -39,6 +39,10 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="password">修改密码</el-dropdown-item>
+              <el-dropdown-item command="twofa">
+                两步验证
+                <el-tag v-if="userStore.user?.totp_enabled" size="small" type="success" class="twofa-tag">已开启</el-tag>
+              </el-dropdown-item>
               <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -99,6 +103,45 @@
         <el-button type="primary" :loading="changingPwd" @click="doChangePassword">确定</el-button>
       </template>
     </el-dialog>
+    <!-- 两步验证 -->
+    <el-dialog v-model="twofaVisible" title="两步验证（TOTP）" width="min(460px, 94vw)">
+      <template v-if="!twofaEnabled">
+        <el-steps :active="twofaStep" align-center finish-status="success" simple>
+          <el-step title="扫码" />
+          <el-step title="验证开启" />
+        </el-steps>
+        <div v-if="twofaStep === 0" v-loading="twofaLoading" class="twofa-setup">
+          <img v-if="twofaQR" :src="twofaQR" alt="TOTP 二维码" class="twofa-qr" />
+          <div class="twofa-secret">
+            <div class="twofa-secret-label">无法扫码？手动输入密钥：</div>
+            <code class="twofa-secret-code">{{ twofaSecret }}</code>
+          </div>
+          <div class="twofa-hint">使用 Google Authenticator / 1Password / 腾讯身份验证器扫描，然后点击下一步</div>
+        </div>
+        <div v-else class="twofa-setup">
+          <el-input
+            v-model="twofaCode" placeholder="输入 App 中的 6 位动态码" maxlength="6" size="large"
+            class="twofa-code-input" @keyup.enter="doEnable2FA"
+          />
+        </div>
+      </template>
+      <template v-else>
+        <div class="twofa-hint" style="margin-bottom: 12px">
+          两步验证已开启。关闭前请输入验证器中的动态码确认身份。
+        </div>
+        <el-input
+          v-model="twofaCode" placeholder="6 位动态码" maxlength="6" size="large"
+          @keyup.enter="doDisable2FA"
+        />
+      </template>
+      <template #footer>
+        <el-button @click="twofaVisible = false">取消</el-button>
+        <el-button v-if="!twofaEnabled" type="primary" :loading="twofaLoading" @click="twofaStep === 0 ? nextSetupStep() : doEnable2FA()">
+          {{ twofaStep === 0 ? '下一步' : '确认开启' }}
+        </el-button>
+        <el-button v-else type="danger" :loading="twofaLoading" @click="doDisable2FA">确认关闭</el-button>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
@@ -109,7 +152,7 @@ import { ElMessage } from 'element-plus'
 import { Fold, Search as SearchIcon } from '@element-plus/icons-vue'
 import SideMenu from './SideMenu.vue'
 import { useUserStore } from '../stores/user'
-import { changeMyPassword, globalSearch } from '../api/domhub'
+import { changeMyPassword, disable2FA, enable2FA, globalSearch, setup2FA } from '../api/domhub'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -184,6 +227,79 @@ function handleCommand(cmd) {
     pwdForm.new_password = ''
     pwdForm.confirm = ''
     pwdDialogVisible.value = true
+  } else if (cmd === 'twofa') {
+    openTwofa()
+  }
+}
+
+// ---- 两步验证 ----
+const twofaVisible = ref(false)
+const twofaLoading = ref(false)
+const twofaStep = ref(0) // 0 扫码 1 输码
+const twofaQR = ref('')
+const twofaSecret = ref('')
+const twofaCode = ref('')
+const twofaEnabled = computed(() => !!userStore.user?.totp_enabled)
+
+async function openTwofa() {
+  twofaCode.value = ''
+  twofaStep.value = 0
+  if (twofaEnabled.value) {
+    twofaVisible.value = true
+    return
+  }
+  twofaVisible.value = true
+  twofaLoading.value = true
+  try {
+    const res = await setup2FA()
+    twofaQR.value = res.data.qr
+    twofaSecret.value = res.data.secret
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '生成密钥失败')
+    twofaVisible.value = false
+  } finally {
+    twofaLoading.value = false
+  }
+}
+
+function nextSetupStep() {
+  if (!twofaSecret.value) return
+  twofaStep.value = 1
+}
+
+async function doEnable2FA() {
+  if (twofaCode.value.length !== 6) {
+    ElMessage.warning('请输入 6 位动态码')
+    return
+  }
+  twofaLoading.value = true
+  try {
+    await enable2FA(twofaCode.value)
+    ElMessage.success('两步验证已开启，下次登录需要输入动态码')
+    twofaVisible.value = false
+    await userStore.fetchMe()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '验证失败')
+  } finally {
+    twofaLoading.value = false
+  }
+}
+
+async function doDisable2FA() {
+  if (twofaCode.value.length !== 6) {
+    ElMessage.warning('请输入 6 位动态码')
+    return
+  }
+  twofaLoading.value = true
+  try {
+    await disable2FA(twofaCode.value)
+    ElMessage.success('两步验证已关闭')
+    twofaVisible.value = false
+    await userStore.fetchMe()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '验证失败')
+  } finally {
+    twofaLoading.value = false
   }
 }
 
@@ -349,5 +465,54 @@ async function doChangePassword() {
 .main {
   background: var(--dh-canvas);
   overflow-y: auto;
+}
+
+/* ---------- 两步验证 ---------- */
+.twofa-tag {
+  margin-left: 6px;
+}
+.twofa-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+.twofa-qr {
+  width: 220px;
+  height: 220px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+.twofa-secret {
+  text-align: center;
+}
+.twofa-secret-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+.twofa-secret-code {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  word-break: break-all;
+}
+.twofa-hint {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  text-align: center;
+}
+.twofa-code-input {
+  max-width: 260px;
+}
+.twofa-code-input :deep(input) {
+  letter-spacing: 6px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 </style>

@@ -13,6 +13,7 @@ type Claims struct {
 	UserID   uint   `json:"uid"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
+	Typ      string `json:"typ,omitempty"` // "" 常规令牌；"2fa" 登录中间态预令牌（不能访问业务接口）
 	jwt.RegisteredClaims
 }
 
@@ -27,6 +28,24 @@ func GenerateToken(userID uint, username, role, secret string, expireHours int) 
 			Issuer:    "domhub",
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expireHours) * time.Hour)),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+}
+
+// Generate2FAPreToken 密码校验通过但待两步验证的中间态令牌（短时效）。
+func Generate2FAPreToken(userID uint, username, secret string, ttl time.Duration) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID:   userID,
+		Username: username,
+		Role:     "",
+		Typ:      "2fa",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "domhub",
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

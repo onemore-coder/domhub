@@ -22,4 +22,5 @@ type UserResponse struct {
 	Role        string     `json:"role"`
 	Status      int        `json:"status"`
 	LastLoginAt *time.Time `json:"last_login_at"`
+	TotpEnabled bool       `json:"totp_enabled"`
 }

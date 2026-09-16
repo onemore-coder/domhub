@@ -82,6 +82,13 @@ export const deleteUser = (id) => http.delete(`/users/${id}`)
 export const getUserZones = (id) => http.get(`/users/${id}/zones`)
 export const setUserZones = (id, grants) => http.put(`/users/${id}/zones`, { grants })
 export const changeMyPassword = (data) => http.post('/users/me/password', data)
+export const resetUser2FA = (id) => http.post(`/users/${id}/2fa/reset`)
+
+// ---- 两步验证（TOTP） ----
+export const verify2FA = (data) => http.post('/auth/2fa/verify', data)
+export const setup2FA = () => http.post('/auth/2fa/setup')
+export const enable2FA = (code) => http.post('/auth/2fa/enable', { code })
+export const disable2FA = (code) => http.post('/auth/2fa/disable', { code })
 
 // ---- 证书申请（ACME 免费证书） ----
 export const listCertCAs = () => http.get('/certs-issued/cas')

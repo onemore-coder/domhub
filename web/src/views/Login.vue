@@ -6,7 +6,25 @@
         <h2>DomHub</h2>
         <p>多云域名与 DNS 统一管理平台</p>
       </div>
-      <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="handleLogin">
+      <!-- 两步验证步骤 -->
+      <template v-if="twoFAVisible">
+        <div class="twofa-tip">请输入验证器 App 中的 6 位动态码</div>
+        <el-form size="large" @keyup.enter="handleVerify2FA">
+          <el-form-item>
+            <el-input
+              v-model="twoFACode" placeholder="6 位动态码" maxlength="6" inputmode="numeric"
+              :prefix-icon="Lock" class="twofa-input"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" class="login-btn" :loading="loading" @click="handleVerify2FA">
+              验证并登录
+            </el-button>
+          </el-form-item>
+        </el-form>
+        <div class="twofa-back" @click="backToPassword">返回重新输入密码</div>
+      </template>
+      <el-form v-else ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="handleLogin">
         <el-form-item prop="username">
           <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" clearable />
         </el-form-item>
@@ -25,14 +43,16 @@
           </el-button>
         </el-form-item>
       </el-form>
-      <div v-if="githubEnabled" class="oauth-divider"><span>或</span></div>
-      <el-button v-if="githubEnabled" class="login-btn github-btn" @click="githubLogin">
-        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true" class="github-icon">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-        </svg>
-        使用 GitHub 登录
-      </el-button>
-      <div class="login-tip">初始账号 admin / admin123，登录后请及时修改</div>
+      <template v-if="!twoFAVisible">
+        <div v-if="githubEnabled" class="oauth-divider"><span>或</span></div>
+        <el-button v-if="githubEnabled" class="login-btn github-btn" @click="githubLogin">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true" class="github-icon">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+          </svg>
+          使用 GitHub 登录
+        </el-button>
+        <div class="login-tip">初始账号 admin / admin123，登录后请及时修改</div>
+      </template>
     </div>
   </div>
 </template>
@@ -42,6 +62,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
+import { verify2FA } from '../api/domhub'
 import { useUserStore } from '../stores/user'
 import http from '../api/http'
 
@@ -74,11 +95,21 @@ function githubLogin() {
   window.location.href = '/api/v1/auth/oauth/github'
 }
 
+// ---- 两步验证登录 ----
+const twoFAVisible = ref(false)
+const twoFACode = ref('')
+const twoFAPreToken = ref('')
+
 async function handleLogin() {
   await formRef.value.validate()
   loading.value = true
   try {
-    await userStore.login(form.username, form.password)
+    const res = await userStore.login(form.username, form.password)
+    if (res?.require_2fa) {
+      twoFAPreToken.value = res.pre_token
+      twoFAVisible.value = true
+      return
+    }
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (err) {
@@ -87,9 +118,48 @@ async function handleLogin() {
     loading.value = false
   }
 }
+
+async function handleVerify2FA() {
+  if (twoFACode.value.length !== 6) {
+    ElMessage.warning('请输入 6 位动态码')
+    return
+  }
+  loading.value = true
+  try {
+    await verify2FA({ pre_token: twoFAPreToken.value, code: twoFACode.value })
+    ElMessage.success('登录成功')
+    router.push('/dashboard')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.message || '验证失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function backToPassword() {
+  twoFAVisible.value = false
+  twoFACode.value = ''
+  twoFAPreToken.value = ''
+}
 </script>
 
 <style scoped>
+.twofa-tip {
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.twofa-back {
+  text-align: center;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  cursor: pointer;
+  margin-top: 4px;
+}
+.twofa-back:hover {
+  color: var(--el-color-primary);
+}
 .login-container {
   height: 100%;
   display: flex;

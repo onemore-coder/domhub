@@ -12,9 +12,12 @@ export const useUserStore = defineStore('user', {
   actions: {
     async login(username, password) {
       const res = await loginApi({ username, password })
+      // 开启两步验证的用户：仅返回中间态（require_2fa + pre_token），不写入 token
+      if (res.data?.require_2fa) return res.data
       this.token = res.data.token
       this.user = res.data.user
       localStorage.setItem('domhub_token', this.token)
+      return null
     },
     async fetchMe() {
       if (!this.token) return

@@ -9,6 +9,8 @@ type User struct {
 	PasswordHash string     `gorm:"size:128;not null" json:"-"`
 	Role         string     `gorm:"size:32;not null;default:admin" json:"role"` // admin | operator | viewer
 	Status       int        `gorm:"not null;default:1" json:"status"`           // 1 启用 0 禁用
+	TotpSecret   string     `gorm:"size:128" json:"-"`                          // TOTP 密钥（AES-GCM 加密存储）
+	TotpEnabled  bool       `gorm:"not null;default:false" json:"totp_enabled"` // 是否已开启两步验证
 	LastLoginAt  *time.Time `json:"last_login_at"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`

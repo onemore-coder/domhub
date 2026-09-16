@@ -182,6 +182,12 @@ func (s *UserService) HasZoneAccess(userID uint, role string, accountID uint, zo
 	return s.grants.Exists(userID, accountID, zone)
 }
 
+// Audit2FAReset 记录管理员重置用户两步验证的审计日志。
+func (s *UserService) Audit2FAReset(opUserID uint, opUsername string, targetUserID uint) {
+	s.writeAudit(opUserID, opUsername, "user.reset_2fa", fmt.Sprintf("user#%d", targetUserID),
+		map[string]any{"target_user_id": targetUserID}, nil)
+}
+
 // writeAudit 用户操作审计。
 func (s *UserService) writeAudit(userID uint, username, action, resource string, detail any, err error) {
 	detailJSON, _ := json.Marshal(detail)

@@ -34,6 +34,10 @@
               link type="primary" :disabled="row.id === me?.id || row.role === 'admin'"
               @click="openGrants(row)"
             >Zone 授权</el-button>
+            <el-button
+              v-if="row.totp_enabled" link type="warning"
+              @click="reset2FA(row)"
+            >重置两步验证</el-button>
             <el-button link type="danger" :disabled="row.id === me?.id" @click="removeUser(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -119,7 +123,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search as SearchIcon } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import {
-  listUsers, createUser, updateUser, deleteUser,
+  listUsers, createUser, updateUser, deleteUser, resetUser2FA,
   getUserZones, setUserZones,
   listAccounts, listDNSZones,
 } from '../api/domhub'
@@ -286,6 +290,22 @@ async function removeUser(row) {
     await load()
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '删除失败')
+  }
+}
+
+async function reset2FA(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确认重置用户 ${row.username} 的两步验证？重置后该用户可不带动态码登录，需重新绑定。`,
+      '重置两步验证', { type: 'warning', confirmButtonText: '重置' },
+    )
+  } catch { return }
+  try {
+    await resetUser2FA(row.id)
+    ElMessage.success('已重置')
+    await load()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.message || '重置失败')
   }
 }
 

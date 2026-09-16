@@ -33,15 +33,17 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	// API v1
 	api := r.Group("/api/v1")
 
-	authSvc := service.NewAuthService(
-		repo.NewUserRepo(db), cfg.JWT.Secret, cfg.JWT.ExpireHours)
-	authH := handler.NewAuthHandler(authSvc)
-
-	// M1：云账号 / 域名台账 / 告警
+	// 凭证加密器（云账号密文与 TOTP 密钥共用）
 	cipher, err := cryptox.New(cfg.Crypto.Key)
 	if err != nil {
 		panic("初始化凭证加密器失败: " + err.Error())
 	}
+
+	authSvc := service.NewAuthService(
+		repo.NewUserRepo(db), cfg.JWT.Secret, cfg.JWT.ExpireHours, cipher)
+	authH := handler.NewAuthHandler(authSvc)
+
+	// M1：云账号 / 域名台账 / 告警
 	accountRepo := repo.NewCloudAccountRepo(db)
 	domainRepo := repo.NewDomainRepo(db)
 	alertRepo := repo.NewAlertRepo(db)
@@ -100,6 +102,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	auth := api.Group("/auth")
 	{
 		auth.POST("/login", authH.Login)
+		auth.POST("/2fa/verify", authH.Verify2FA) // 两步验证完成登录（凭 pre_token，免 JWT）
 		auth.POST("/logout", authH.Logout)
 		// M4：GitHub OAuth（无需 JWT）
 		oauthSvc := service.NewOAuthService(
@@ -235,6 +238,11 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.GET("/users/:id/zones", adminOnly, userH.Grants)
 		protected.PUT("/users/:id/zones", adminOnly, userH.SetGrants)
 		protected.POST("/users/me/password", userH.ChangePassword)
+		// 两步验证：本人绑定/开关 + 管理员强制重置
+		protected.POST("/auth/2fa/setup", authH.Setup2FA)
+		protected.POST("/auth/2fa/enable", authH.Enable2FA)
+		protected.POST("/auth/2fa/disable", authH.Disable2FA)
+		protected.POST("/users/:id/2fa/reset", adminOnly, userH.Reset2FA)
 
 		// M4：解析记录快照（读需登录，写需 operator+）
 		protected.GET("/dns/snapshots", snapshotH.List)

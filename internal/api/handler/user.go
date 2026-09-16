@@ -135,6 +135,22 @@ type changePasswordReq struct {
 	NewPassword string `json:"new_password"`
 }
 
+// Reset2FA POST /api/v1/users/:id/2fa/reset（admin）——强制重置用户两步验证。
+func (h *UserHandler) Reset2FA(c *gin.Context) {
+	id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+	if id == 0 {
+		c.JSON(400, gin.H{"code": 400, "message": "无效 ID"})
+		return
+	}
+	if err := h.auth.AdminReset2FA(uint(id)); err != nil {
+		c.JSON(400, gin.H{"code": 400, "message": err.Error()})
+		return
+	}
+	uid, username, _ := middleware.CtxUser(c)
+	h.userSvc.Audit2FAReset(uid, username, uint(id))
+	c.JSON(200, gin.H{"code": 0, "message": "已重置该用户的两步验证"})
+}
+
 // ChangePassword POST /api/v1/users/me/password（所有登录用户）
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	var req changePasswordReq
