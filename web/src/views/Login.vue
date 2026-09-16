@@ -126,7 +126,11 @@ async function handleVerify2FA() {
   }
   loading.value = true
   try {
-    await verify2FA({ pre_token: twoFAPreToken.value, code: twoFACode.value })
+    const res = await verify2FA({ pre_token: twoFAPreToken.value, code: twoFACode.value })
+    // 保存正式 token 与用户信息，否则路由守卫会因无 token 弹回登录页
+    userStore.setToken(res.data?.token)
+    if (res.data?.user) userStore.user = res.data.user
+    else await userStore.fetchMe().catch(() => {})
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (err) {
