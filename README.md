@@ -20,6 +20,26 @@
 - **两步验证（2FA）**：登录支持 TOTP 动态码（兼容 Google Authenticator 等验证器），管理员可重置
 - **现代界面**：浅色 / 深色模式一键切换、全局搜索、系统设置 cron 热生效
 
+## 界面预览
+
+**仪表盘**（浅色 / 深色）
+
+![仪表盘](docs/screenshots/dashboard.png)
+![仪表盘·深色](docs/screenshots/dashboard-dark.png)
+
+**域名台账**：到期时间色阶预警、标签、解析托管归属
+
+![域名台账](docs/screenshots/domains.png)
+
+**DNS 解析管理**：记录增删改、批量操作、变更预览
+
+![解析记录](docs/screenshots/dns-records.png)
+
+**多云账号 / 审计日志**：凭证脱敏展示、操作全留痕
+
+![云账号](docs/screenshots/accounts.png)
+![审计日志](docs/screenshots/audit.png)
+
 ## 技术栈
 
 - **后端**：Go + Gin + GORM + MySQL（开发模式支持 SQLite）
