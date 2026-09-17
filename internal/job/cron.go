@@ -10,9 +10,9 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
-	"github.com/domhub-io/domhub/internal/pkg/cronutil"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/pkg/cronutil"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // Job 名称常量（对应 system_settings 的 key）。

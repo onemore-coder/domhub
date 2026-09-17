@@ -10,11 +10,11 @@ import (
 	"github.com/skip2/go-qrcode"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/cryptox"
-	"github.com/domhub-io/domhub/internal/pkg/jwtx"
-	"github.com/domhub-io/domhub/internal/pkg/totp"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
+	"github.com/onemore-coder/domhub/internal/pkg/jwtx"
+	"github.com/onemore-coder/domhub/internal/pkg/totp"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 var (

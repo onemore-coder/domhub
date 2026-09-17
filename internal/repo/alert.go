@@ -3,7 +3,7 @@ package repo
 import (
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 )
 
 // AlertRepo 告警渠道 / 规则 / 日志数据访问。

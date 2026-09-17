@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 )
 
 // RecordTemplateRepo 解析记录模板仓库。

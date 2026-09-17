@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 var cst *time.Location

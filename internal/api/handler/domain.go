@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/repo"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // DomainHandler 域名台账接口。

@@ -17,7 +17,7 @@ COPY --from=web-builder /app/web/dist ./web/dist
 # 版本号：构建时传入（CI 传 git tag，本地默认 dev）
 ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux \
-    go build -ldflags="-s -w -X github.com/domhub-io/domhub/internal/pkg/version.Version=${VERSION}" \
+    go build -ldflags="-s -w -X github.com/onemore-coder/domhub/internal/pkg/version.Version=${VERSION}" \
     -o /domhub ./cmd/server
 
 # ---- 运行镜像 ----

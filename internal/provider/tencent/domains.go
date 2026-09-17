@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 // describeResp DescribeDomainNameList 响应字段。

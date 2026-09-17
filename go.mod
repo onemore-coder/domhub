@@ -1,4 +1,4 @@
-module github.com/domhub-io/domhub
+module github.com/onemore-coder/domhub
 
 go 1.26.0
 

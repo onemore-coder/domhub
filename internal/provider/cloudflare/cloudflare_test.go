@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 // mockCF 模拟 Cloudflare v4 API，返回每次请求的路径记录与预置响应。

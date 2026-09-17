@@ -3,7 +3,7 @@ package repo
 import (
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 )
 
 // DnsRecordRepo 解析记录本地镜像仓库。

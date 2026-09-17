@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/cryptox"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/provider"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/repo"
 	"go.uber.org/zap"
 )
 

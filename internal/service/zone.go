@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // ZoneService 托管域名元数据缓存：列表读缓存秒开，刷新任务回源厂商 API。

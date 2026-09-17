@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 // apiBase Cloudflare v4 API 地址（测试中可替换为 httptest 服务）。

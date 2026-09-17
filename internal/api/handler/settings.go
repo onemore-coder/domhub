@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // SettingsHandler 系统设置接口。

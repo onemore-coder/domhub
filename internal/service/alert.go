@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/pkg/notify"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/pkg/notify"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // AlertService 到期告警业务。

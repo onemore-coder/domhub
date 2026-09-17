@@ -6,10 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/notify"
-	"github.com/domhub-io/domhub/internal/repo"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/notify"
+	"github.com/onemore-coder/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // AlertHandler 告警渠道 / 规则 / 检查接口。

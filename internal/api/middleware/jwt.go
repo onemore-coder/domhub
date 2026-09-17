@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/pkg/jwtx"
+	"github.com/onemore-coder/domhub/internal/pkg/jwtx"
 )
 
 const (

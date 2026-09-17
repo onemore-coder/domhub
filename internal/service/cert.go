@@ -11,10 +11,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/pkg/notify"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/pkg/notify"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // CertService SSL 证书监控：发现主机名（注册域 apex + 解析记录镜像中的子域名），

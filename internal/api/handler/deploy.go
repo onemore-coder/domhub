@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // DeployHandler 证书部署目标接口。

@@ -11,9 +11,9 @@ import (
 	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/config"
-	applog "github.com/domhub-io/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/config"
+	applog "github.com/onemore-coder/domhub/internal/pkg/logger"
 )
 
 // InitDB 按配置初始化数据库连接并执行迁移。

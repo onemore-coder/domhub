@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // TokenService API 令牌业务：签发（明文仅返回一次）、列表、吊销、鉴权查找。

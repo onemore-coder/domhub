@@ -1,7 +1,7 @@
 package repo
 
 import (
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 	"gorm.io/gorm"
 )
 

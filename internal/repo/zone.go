@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 )
 
 // ZoneView 缓存 Zone + 归属账号信息（join 查询结果）。

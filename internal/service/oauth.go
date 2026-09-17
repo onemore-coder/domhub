@@ -16,9 +16,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/jwtx"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/jwtx"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // GitHubOAuthConf GitHub OAuth 应用配置。

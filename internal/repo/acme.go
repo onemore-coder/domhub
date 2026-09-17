@@ -3,7 +3,7 @@ package repo
 import (
 	"time"
 
-	"github.com/domhub-io/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/model"
 	"gorm.io/gorm"
 )
 

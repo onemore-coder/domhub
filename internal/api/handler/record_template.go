@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/provider"
-	"github.com/domhub-io/domhub/internal/repo"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // TemplateHandler 解析记录模板接口：模板 CRUD + 一键下发（生成变更计划，执行复用 /dns/push）。

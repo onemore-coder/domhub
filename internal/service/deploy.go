@@ -10,14 +10,14 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/cryptox"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/pkg/notify"
-	"github.com/domhub-io/domhub/internal/provider"
-	"github.com/domhub-io/domhub/internal/provider/aliyun"
-	"github.com/domhub-io/domhub/internal/provider/tencent"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/pkg/notify"
+	"github.com/onemore-coder/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider/aliyun"
+	"github.com/onemore-coder/domhub/internal/provider/tencent"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // CertDeployService 证书部署：签发/续期成功后把证书下发到 CDN 或 SSH 主机。

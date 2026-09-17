@@ -7,10 +7,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/domhub-io/domhub/internal/api/dto"
-	"github.com/domhub-io/domhub/internal/api/middleware"
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/api/dto"
+	"github.com/onemore-coder/domhub/internal/api/middleware"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // AuthHandler 认证相关接口。

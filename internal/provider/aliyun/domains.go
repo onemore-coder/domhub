@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 // domainItem QueryDomainList 返回的域名条目。

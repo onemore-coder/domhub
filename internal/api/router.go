@@ -12,14 +12,14 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/api/handler"
-	"github.com/domhub-io/domhub/internal/api/middleware"
-	"github.com/domhub-io/domhub/internal/model"
-	"github.com/domhub-io/domhub/internal/pkg/config"
-	"github.com/domhub-io/domhub/internal/pkg/cryptox"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/repo"
-	"github.com/domhub-io/domhub/internal/service"
+	"github.com/onemore-coder/domhub/internal/api/handler"
+	"github.com/onemore-coder/domhub/internal/api/middleware"
+	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/pkg/config"
+	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // NewRouter 构建 gin 引擎。scheduleApplier 由 job.Scheduler 实现（可 nil），

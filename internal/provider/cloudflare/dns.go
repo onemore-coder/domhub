@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/domhub-io/domhub/internal/provider"
+	"github.com/onemore-coder/domhub/internal/provider"
 )
 
 // ---- DNS 记录管理（Cloudflare v4 /zones/{id}/dns_records）----

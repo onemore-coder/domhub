@@ -14,20 +14,20 @@ import (
 	"go.uber.org/zap"
 
 	// 云厂商 Provider 自注册
-	_ "github.com/domhub-io/domhub/internal/provider/aliyun"
-	_ "github.com/domhub-io/domhub/internal/provider/aws"
-	_ "github.com/domhub-io/domhub/internal/provider/cloudflare"
-	_ "github.com/domhub-io/domhub/internal/provider/tencent"
+	_ "github.com/onemore-coder/domhub/internal/provider/aliyun"
+	_ "github.com/onemore-coder/domhub/internal/provider/aws"
+	_ "github.com/onemore-coder/domhub/internal/provider/cloudflare"
+	_ "github.com/onemore-coder/domhub/internal/provider/tencent"
 
-	"github.com/domhub-io/domhub/internal/api"
-	"github.com/domhub-io/domhub/internal/bootstrap"
-	"github.com/domhub-io/domhub/internal/job"
-	"github.com/domhub-io/domhub/internal/pkg/config"
-	"github.com/domhub-io/domhub/internal/pkg/cryptox"
-	"github.com/domhub-io/domhub/internal/pkg/logger"
-	"github.com/domhub-io/domhub/internal/repo"
-	"github.com/domhub-io/domhub/internal/service"
-	web "github.com/domhub-io/domhub/web"
+	"github.com/onemore-coder/domhub/internal/api"
+	"github.com/onemore-coder/domhub/internal/bootstrap"
+	"github.com/onemore-coder/domhub/internal/job"
+	"github.com/onemore-coder/domhub/internal/pkg/config"
+	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
+	"github.com/onemore-coder/domhub/internal/pkg/logger"
+	"github.com/onemore-coder/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/service"
+	web "github.com/onemore-coder/domhub/web"
 )
 
 func main() {

@@ -7,9 +7,9 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/domhub-io/domhub/internal/pkg/cronutil"
-	"github.com/domhub-io/domhub/internal/pkg/version"
-	"github.com/domhub-io/domhub/internal/repo"
+	"github.com/onemore-coder/domhub/internal/pkg/cronutil"
+	"github.com/onemore-coder/domhub/internal/pkg/version"
+	"github.com/onemore-coder/domhub/internal/repo"
 )
 
 // 可配置的定时任务 key 与默认值（7 位 cron，带秒）。
