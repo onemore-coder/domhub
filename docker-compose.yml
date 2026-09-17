@@ -18,6 +18,7 @@ services:
       retries: 20
 
   domhub:
+    image: ghcr.io/onemore-coder/domhub:latest   # 也可本地构建：docker compose build domhub
     build: .
     container_name: domhub
     restart: unless-stopped

@@ -2,6 +2,11 @@
 
 > 多云域名与 DNS 统一管理平台
 
+[![CI](https://github.com/onemore-coder/domhub/actions/workflows/ci.yml/badge.svg)](https://github.com/onemore-coder/domhub/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/onemore-coder/domhub)](https://github.com/onemore-coder/domhub/releases)
+[![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/onemore-coder/domhub/pkgs/container/domhub)
+[![License](https://img.shields.io/github/license/onemore-coder/domhub)](LICENSE)
+
 把散落在腾讯云、阿里云、AWS、Cloudflare 等多个云厂商、多个账号下的域名资产和 DNS 解析，收拢到一个控制台里统一管理。单二进制部署，开箱即用。
 
 ## 功能特性
@@ -123,7 +128,8 @@ curl -H "Authorization: Bearer dht_xxxxxxxxxxxx" \
 | M4 | 解析快照、漂移检测、Tags、系统设置、OAuth | ✅ |
 | M5 | Zone 缓存、API Token、渠道测试发送、体验优化 | ✅ |
 | M6 | SSL 证书监控、证书签发（ACME）、证书部署、批量操作模板、全局搜索 | ✅ v0.7.0 |
-| 之后 | 更多厂商（华为云 / Route53）、只读角色细化、2FA、配置导出 | |
+| v0.7.1 | 两步验证（2FA / TOTP）、配置导出、审计增强、移动端适配、API 接口目录 | ✅ v0.7.1 |
+| 之后 | 更多厂商（华为云 / Route53 / 注册商接入）、只读角色细化 | |
 
 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
