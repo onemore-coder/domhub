@@ -7,6 +7,8 @@
 [![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/onemore-coder/domhub/pkgs/container/domhub)
 [![License](https://img.shields.io/github/license/onemore-coder/domhub)](LICENSE)
 
+> 🎬 **在线演示**：[domhub-demo.app.workbuddy.host](https://domhub-demo.app.workbuddy.host)（账号 `admin / admin123`，全部为演示假数据，请勿存入真实凭证）
+
 把散落在腾讯云、阿里云、AWS、Cloudflare 等多个云厂商、多个账号下的域名资产和 DNS 解析，收拢到一个控制台里统一管理。单二进制部署，开箱即用。
 
 ## 功能特性
