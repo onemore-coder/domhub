@@ -175,7 +175,7 @@ async function exportCsv() {
   if (filters.expiring_days) qs.set('expiring_days', filters.expiring_days)
   try {
     const res = await fetch(`/api/v1/domains/export?${qs.toString()}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}` },
+      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}`, 'X-Api-Key': localStorage.getItem('domhub_token') },
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()

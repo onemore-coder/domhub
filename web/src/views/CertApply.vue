@@ -400,7 +400,7 @@ async function remove(row) {
 async function download(row, type) {
   try {
     const res = await fetch(`/api/v1/certs-issued/${row.id}/download?type=${type}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}` },
+      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}`, 'X-Api-Key': localStorage.getItem('domhub_token') },
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()

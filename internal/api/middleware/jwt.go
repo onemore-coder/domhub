@@ -32,23 +32,37 @@ type ApiTokenLookup func(token string) (userID uint, username, role string, ok b
 // 同时校验账号是否被禁用，禁用用户的 token 立即失效。
 func JWT(secret string, lookup RoleLookup, apiTokenLookup ApiTokenLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		auth := c.GetHeader("Authorization")
-		if auth == "" {
+		// 网关兼容：部分托管平台/CDN 网关会在转发时改写 Authorization 头
+		// （塞入自身边缘凭据）甚至丢弃非标准自定义头。收集全部凭据候选，
+		// 逐个尝试解析，任一成功即通过：
+		// X-Api-Key 头 → Authorization 头 → domhub_token Cookie。
+		var candidates []string
+		if xk := c.GetHeader("X-Api-Key"); xk != "" {
+			candidates = append(candidates, xk)
+		}
+		if auth := c.GetHeader("Authorization"); auth != "" {
+			candidates = append(candidates, strings.TrimPrefix(auth, "Bearer "))
+		}
+		if ck, err := c.Cookie("domhub_token"); err == nil && ck != "" {
+			candidates = append(candidates, ck)
+		}
+		if len(candidates) == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
 			return
 		}
-		token := strings.TrimPrefix(auth, "Bearer ")
 
-		// API Token 路径
-		if strings.HasPrefix(token, "dht_") {
+		// API Token 路径：任一候选命中 dht_ 前缀即走 API Token 鉴权
+		for _, cand := range candidates {
+			if !strings.HasPrefix(cand, "dht_") {
+				continue
+			}
 			if apiTokenLookup == nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "API Token 未启用"})
 				return
 			}
-			uid, username, role, ok := apiTokenLookup(token)
+			uid, username, role, ok := apiTokenLookup(cand)
 			if !ok {
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "API Token 无效或已过期"})
-				return
+				continue
 			}
 			c.Set(CtxUserID, uid)
 			c.Set(CtxUsername, username)
@@ -57,8 +71,14 @@ func JWT(secret string, lookup RoleLookup, apiTokenLookup ApiTokenLookup) gin.Ha
 			return
 		}
 
-		claims, err := jwtx.ParseToken(token, secret)
-		if err != nil {
+		var claims *jwtx.Claims
+		for _, cand := range candidates {
+			if parsed, err := jwtx.ParseToken(cand, secret); err == nil {
+				claims = parsed
+				break
+			}
+		}
+		if claims == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "登录已失效，请重新登录"})
 			return
 		}

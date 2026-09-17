@@ -368,7 +368,7 @@ const zoneName = ref(String(route.query.zone || ''))
 async function exportCsv() {
   try {
     const res = await fetch(`/api/v1/dns/records/export?account_id=${accountId.value}&zone=${encodeURIComponent(zoneName.value)}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}` },
+      headers: { Authorization: `Bearer ${localStorage.getItem('domhub_token')}`, 'X-Api-Key': localStorage.getItem('domhub_token') },
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
