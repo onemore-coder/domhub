@@ -22,23 +22,40 @@
 
 ## 界面预览
 
-**仪表盘**（浅色 / 深色）
+> 以下截图均为演示数据（example.com 等保留域名），不含真实资产信息。
+
+**仪表盘**：资产总览、厂商分布、30 天到期时间线、最近变更（浅色 / 深色）
 
 ![仪表盘](docs/screenshots/dashboard.png)
 ![仪表盘·深色](docs/screenshots/dashboard-dark.png)
 
-**域名台账**：到期时间色阶预警、标签、解析托管归属
+**域名台账**：到期色阶预警、标签管理、解析托管归属
 
 ![域名台账](docs/screenshots/domains.png)
 
-**DNS 解析管理**：记录增删改、批量操作、变更预览
+**DNS 管理**：跨账号 Zone 聚合（本地缓存秒开）+ 解析记录增删改、批量操作、变更预览
 
+![DNS 管理](docs/screenshots/dns-zones.png)
 ![解析记录](docs/screenshots/dns-records.png)
 
-**多云账号 / 审计日志**：凭证脱敏展示、操作全留痕
+**证书签发与监控**：ACME 免费证书申请（DNS-01 / 泛域名 / 自动续期）、主机证书到期拨测
 
-![云账号](docs/screenshots/accounts.png)
+![证书监控](docs/screenshots/certs.png)
+![证书申请](docs/screenshots/cert-apply.png)
+
+**告警中心**：钉钉 / 企业微信 / 邮件 / Webhook / Telegram 多渠道，多档位提前提醒
+
+![告警中心](docs/screenshots/alerts.png)
+
+**API Token 与接口目录**：`dht_` 令牌管理，内置全部接口的 curl 示例一键复制
+
+![API Token](docs/screenshots/tokens.png)
+
+**用户权限 / 审计日志 / 系统设置**：RBAC 三角色 + Zone 级授权、操作全留痕、定时任务 cron 热生效
+
+![用户权限](docs/screenshots/users.png)
 ![审计日志](docs/screenshots/audit.png)
+![系统设置](docs/screenshots/settings.png)
 
 ## 技术栈
 
