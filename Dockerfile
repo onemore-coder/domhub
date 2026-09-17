@@ -14,7 +14,11 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /app/web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /domhub ./cmd/server
+# 版本号：构建时传入（CI 传 git tag，本地默认 dev）
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build -ldflags="-s -w -X github.com/domhub-io/domhub/internal/pkg/version.Version=${VERSION}" \
+    -o /domhub ./cmd/server
 
 # ---- 运行镜像 ----
 FROM alpine:3.20

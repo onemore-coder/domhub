@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/domhub-io/domhub/internal/pkg/cronutil"
+	"github.com/domhub-io/domhub/internal/pkg/version"
 	"github.com/domhub-io/domhub/internal/repo"
 )
 
@@ -121,7 +122,7 @@ func (s *SettingsService) Info(db *gorm.DB) SystemInfo {
 		engine = db.Dialector.Name()
 	}
 	return SystemInfo{
-		Version:   "0.4.0-m4",
+		Version:   version.Version,
 		GoVersion: goVersion(),
 		StartedAt: startedAt,
 		DBEngine:  engine,

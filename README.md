@@ -44,8 +44,8 @@ docker compose up -d
 # 构建前端（产物内嵌进二进制）
 cd web && npm install && npm run build && cd ..
 
-# 构建后端单二进制
-go build -o domhub ./cmd/server
+# 构建后端单二进制（注入版本号，可选）
+go build -ldflags "-X github.com/domhub-io/domhub/internal/pkg/version.Version=$(git describe --tags --always)" -o domhub ./cmd/server
 
 # 默认使用 SQLite（domhub.db），无需 MySQL
 ./domhub
