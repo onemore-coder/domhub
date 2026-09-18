@@ -7,6 +7,18 @@ const http = axios.create({
   timeout: 15000,
 })
 
+// token 双写：localStorage + domhub_token Cookie。
+// 部分托管平台网关会改写/剥离 Authorization 与自定义请求头，
+// 而同源 Cookie 可原样透传，故登录后同步写 Cookie 兜底
+export function saveToken(token) {
+  localStorage.setItem('domhub_token', token)
+  document.cookie = `domhub_token=${token}; path=/; max-age=604800; SameSite=Lax`
+}
+export function clearToken() {
+  localStorage.removeItem('domhub_token')
+  document.cookie = 'domhub_token=; path=/; max-age=0'
+}
+
 // 请求拦截：附加 token
 // Authorization 之外同时发送 X-Api-Key：部分托管平台网关会改写
 // Authorization 头，双发保证在被代理环境下依然可用
@@ -26,8 +38,7 @@ http.interceptors.response.use(
     const status = error.response?.status
     const message = error.response?.data?.message || '请求失败，请稍后重试'
     if (status === 401) {
-      localStorage.removeItem('domhub_token')
-      document.cookie = 'domhub_token=; path=/; max-age=0'
+      clearToken()
       if (router.currentRoute.value.path !== '/login') {
         router.push('/login')
       }

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getMe, login as loginApi } from '../api'
+import { saveToken, clearToken } from '../api/http'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -16,7 +17,7 @@ export const useUserStore = defineStore('user', {
       if (res.data?.require_2fa) return res.data
       this.token = res.data.token
       this.user = res.data.user
-      localStorage.setItem('domhub_token', this.token)
+      saveToken(this.token)
       return null
     },
     async fetchMe() {
@@ -26,12 +27,12 @@ export const useUserStore = defineStore('user', {
     },
     setToken(token) {
       this.token = token
-      localStorage.setItem('domhub_token', token)
+      saveToken(token)
     },
     clear() {
       this.token = ''
       this.user = null
-      localStorage.removeItem('domhub_token')
+      clearToken()
     },
   },
 })
