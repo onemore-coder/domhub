@@ -2,6 +2,15 @@
 
 本项目的所有重要变更都记录在本文件中。
 
+## [Unreleased]
+
+### 变更
+
+- **Docker 默认存储改为 SQLite**：`docker compose up -d` 即单容器部署，不再默认拉取 mysql:8.4（约 600MB），数据持久化到 `domhub_data` 卷（`/app/data/domhub.db`）；MySQL 场景改由叠加文件 `docker-compose.mysql.yml` 提供（`docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d`）
+- **compose 显式分离双密钥**：新增 `DOMHUB_CRYPTO_KEY`（云凭证加密），与 `DOMHUB_JWT_SECRET` 独立，日后更换 JWT 密钥不影响已存凭证解密
+- **Dockerfile**：预创建 `/app/data` 并归属运行用户（uid 10001），避免挂载卷后 SQLite 文件创建失败
+- **鉴权网关兼容**（v0.7.1 后追加）：JWT 中间件多通道凭据（X-Api-Key → Authorization → domhub_token Cookie）+ 前端登录同步写 Cookie，适配会改写 Authorization 头的托管平台网关；新增 `cmd/demoseed` 演示环境自举工具
+
 ## [v0.7.1] - 2026-09-16
 
 ### 新增

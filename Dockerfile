@@ -26,6 +26,9 @@ RUN apk add --no-cache ca-certificates tzdata && \
     adduser -D -u 10001 domhub
 WORKDIR /app
 COPY --from=go-builder /domhub /app/domhub
+# SQLite 默认数据目录：预创建并归属运行用户，
+# 避免挂载卷后目录为 root 所有导致 sqlite 文件创建失败
+RUN mkdir -p /app/data && chown -R domhub:domhub /app/data
 USER domhub
 EXPOSE 8080
 ENTRYPOINT ["/app/domhub"]

@@ -66,7 +66,7 @@
 
 ## 技术栈
 
-- **后端**：Go + Gin + GORM + MySQL（开发模式支持 SQLite）
+- **后端**：Go + Gin + GORM（默认 SQLite，可选 MySQL）
 - **前端**：Vue 3 + Element Plus + Vite + Pinia
 - **部署**：单二进制（`go:embed` 内嵌前端）/ Docker Compose
 
@@ -74,12 +74,19 @@
 
 ### Docker Compose（推荐）
 
+默认单容器 SQLite 部署，无需 MySQL，拉取快、备份只需拷一个数据文件：
+
 ```bash
 git clone https://github.com/onemore-coder/domhub.git
 cd domhub
-cp config.example.yaml config.yaml   # 修改数据库与 JWT 密钥
 docker compose up -d
 # 访问 http://localhost:8080
+```
+
+需要 MySQL（多实例 / 高并发写入场景）时，叠加 MySQL 配置：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
 ```
 
 ### 源码构建

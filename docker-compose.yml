@@ -1,39 +1,29 @@
+# DomHub Docker Compose
+#
+# 默认：单容器 SQLite 部署（推荐，个人自托管够用，拉取快、备份就是拷一个文件）
+#   docker compose up -d
+#
+# 需要 MySQL（多实例 / 高并发写入场景）：
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
 services:
-  mysql:
-    image: mysql:8.4
-    container_name: domhub-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: root123456
-      MYSQL_DATABASE: domhub
-      MYSQL_USER: domhub
-      MYSQL_PASSWORD: domhub123
-      TZ: Asia/Shanghai
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123456"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   domhub:
     image: ghcr.io/onemore-coder/domhub:latest   # 也可本地构建：docker compose build domhub
     build: .
     container_name: domhub
     restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       DOMHUB_SERVER_MODE: release
-      DOMHUB_DB_DRIVER: mysql
-      DOMHUB_DB_DSN: "domhub:domhub123@tcp(mysql:3306)/domhub?charset=utf8mb4&parseTime=True&loc=Local"
+      DOMHUB_DB_DRIVER: sqlite
+      DOMHUB_DB_DSN: /app/data/domhub.db
       DOMHUB_JWT_SECRET: "please-change-me-to-a-random-string"
+      # 云凭证加密密钥：与 JWT 密钥分开设置，日后更换 JWT 密钥不影响已存凭证解密
+      DOMHUB_CRYPTO_KEY: "please-change-me-too-32-chars-min"
       DOMHUB_ADMIN_USERNAME: admin
       DOMHUB_ADMIN_PASSWORD: admin123
+    volumes:
+      - domhub_data:/app/data   # SQLite 数据落盘，容器重建不丢
 
 volumes:
-  mysql_data:
+  domhub_data:

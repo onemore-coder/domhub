@@ -1,0 +1,35 @@
+# DomHub MySQL 叠加配置（可选）
+#
+# 用法（与主 compose 文件一起使用）：
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
+#
+# 适用场景：多实例部署 / 高并发写入。个人自托管用默认 SQLite 即可。
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: domhub-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: domhub
+      MYSQL_USER: domhub
+      MYSQL_PASSWORD: domhub123
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123456"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  domhub:
+    environment:
+      DOMHUB_DB_DRIVER: mysql
+      DOMHUB_DB_DSN: "domhub:domhub123@tcp(mysql:3306)/domhub?charset=utf8mb4&parseTime=True&loc=Local"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
