@@ -132,7 +132,7 @@ DomHub 内置 MCP（Model Context Protocol）服务器，Claude / Cursor / WorkB
 
 **接入步骤**（约 1 分钟）：
 
-1. 在「安全设置 → API Token」页生成一个 Token（`dht_` 前缀）
+1. 在「安全设置 → API Token」页生成一个 Token（`dht_` 前缀；日常查询建议选**只读**，需要 AI 代管解析记录时选**读写**）
 2. 在 AI 客户端的 MCP 配置中加入 DomHub：
 
 ```json
@@ -151,7 +151,7 @@ DomHub 内置 MCP（Model Context Protocol）服务器，Claude / Cursor / WorkB
 
 > Claude Desktop / Cursor 填在 MCP 服务器配置里；不支持 `headers` 字段的客户端可用 `X-Api-Key` 头或网关注入。
 
-**内置只读工具**（首期 8 个，写入类工具按 Roadmap 逐步开放）：
+**内置工具**（11 个 = 8 只读 + 3 写操作）：
 
 | 工具 | 说明 |
 |---|---|
@@ -163,8 +163,15 @@ DomHub 内置 MCP（Model Context Protocol）服务器，Claude / Cursor / WorkB
 | `list_certs` | SSL 证书监控状态（含剩余天数） |
 | `list_cloud_accounts` | 云账号元信息（密钥脱敏） |
 | `list_alert_logs` | 最近告警发送记录 |
+| `create_dns_record` 🔒 | 创建解析记录（需 readwrite Token） |
+| `update_dns_record` 🔒 | 修改解析记录值 / TTL / 优先级 / 代理状态（需 readwrite Token） |
+| `delete_dns_record` 🔒 | 删除解析记录（需 readwrite Token，删除前应与用户确认） |
 
-**安全说明**：MCP 复用 API Token 鉴权与数据授权体系（非 admin 用户的 Token 只能看到被授权的 Zone）；AI 的每次查询与工具调用均可在审计日志中追溯。
+**权限模型**：Token 分**只读（readonly，默认）**与**读写（readwrite）**两档——只读 Token 调用写工具会被拒绝，REST API 的写请求同样拦截；写操作复用 Zone 级数据授权（非 admin 的 Token 只能操作被授权的 Zone），并全部落入审计日志。
+
+**安全说明**：MCP 复用 API Token 鉴权与数据授权体系；AI 的每次查询与工具调用均可在审计日志中追溯。
+
+**进阶：DomHub Skill 包**——把 `skills/domhub/SKILL.md` 安装到你的 AI 助手（WorkBuddy 放 `~/.workbuddy/skills/domhub/`，Claude Code 放 `~/.claude/skills/domhub/`），AI 会自动学会 DomHub 工具的编排方式（先查后改、删除前确认、TTL 约定等），接入体验更稳。
 
 ## Roadmap
 

@@ -1,8 +1,8 @@
 # Go
 *.exe
 *.test
-domhub
-server
+/domhub
+/server
 
 # 数据与本地配置
 *.db
