@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -73,5 +75,64 @@ func TestBuildDingtalkJSON(t *testing.T) {
 	d := n.(*dingtalkNotifier)
 	if d.secret != "SECxxx" || d.keyword != "DomHub" {
 		t.Fatalf("secret/keyword 解析异常: %+v", d)
+	}
+}
+
+// 机器人接口失败时 HTTP 仍为 200 + errcode!=0，Send 必须报错而非误报成功。
+func TestDingtalkErrcodeCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errcode":310000,"errmsg":"sign not match"}`))
+	}))
+	defer srv.Close()
+
+	d := &dingtalkNotifier{webhook: srv.URL}
+	if err := d.Send("测试", "内容"); err == nil {
+		t.Fatal("errcode!=0 应返回错误")
+	} else if !strings.Contains(err.Error(), "310000") {
+		t.Fatalf("错误信息应包含 errcode: %v", err)
+	}
+}
+
+// errcode=0 应成功。
+func TestDingtalkSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	}))
+	defer srv.Close()
+
+	d := &dingtalkNotifier{webhook: srv.URL, keyword: "DomHub"}
+	if err := d.Send("测试", "内容"); err != nil {
+		t.Fatalf("errcode=0 不应报错: %v", err)
+	}
+}
+
+// 企业微信 errcode!=0 应报错。
+func TestWecomErrcodeCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errcode":93000,"errmsg":"invalid webhook"}`))
+	}))
+	defer srv.Close()
+
+	w := &wecomNotifier{webhook: srv.URL}
+	if err := w.Send("测试", "内容"); err == nil || !strings.Contains(err.Error(), "93000") {
+		t.Fatalf("企业微信 errcode!=0 应报错: %v", err)
+	}
+}
+
+// Telegram ok=false 应报错。
+func TestTelegramOKCheck(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":false,"error_code":401,"description":"Unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	tg := &telegramNotifier{cfg: telegramConfig{BotToken: "x", ChatID: "1"}}
+	// 替换 API 域名为本地测试服务器
+	old := apiBase
+	apiBase = srv.URL
+	defer func() { apiBase = old }()
+	if err := tg.Send("测试", "内容"); err == nil || !strings.Contains(err.Error(), "Unauthorized") {
+		t.Fatalf("Telegram ok=false 应报错: %v", err)
 	}
 }
