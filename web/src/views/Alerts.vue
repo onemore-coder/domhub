@@ -102,6 +102,27 @@
             <el-input v-model="dingtalkCfg.keyword" placeholder="自定义关键词（安全设置选「自定义关键词」时必填）" />
             <div class="config-hint">钉钉机器人安全设置三选一：加签 → 填加签密钥；自定义关键词 → 填关键词（自动附带在消息开头）；IP 白名单 → 请将部署机出口 IP 加入白名单，此处两项留空即可</div>
           </template>
+          <template v-else-if="channelForm.type === 'email'">
+            <el-select v-model="emailPreset" placeholder="快速填充：选择常用邮箱服务商（可选）" clearable style="width: 100%; margin-bottom: 8px" @change="applyEmailPreset">
+              <el-option v-for="p in emailPresets" :key="p.label" :value="p.label" :label="p.label" />
+            </el-select>
+            <el-input v-model="emailCfg.host" placeholder="SMTP 服务器，如 smtp.qq.com" style="margin-bottom: 8px" />
+            <div style="display: flex; gap: 8px; margin-bottom: 8px">
+              <el-select v-model="emailCfg.port" style="width: 180px; flex-shrink: 0" filterable allow-create>
+                <el-option :value="465" label="465（SSL，推荐）" />
+                <el-option :value="587" label="587（STARTTLS）" />
+              </el-select>
+              <el-input v-model="emailCfg.username" placeholder="发件邮箱账号" />
+            </div>
+            <el-input v-model="emailCfg.password" type="password" show-password placeholder="授权码 / 客户端专用密码（非邮箱登录密码）" style="margin-bottom: 8px" />
+            <el-input v-model="emailCfg.to" placeholder="收件人邮箱，多个用逗号分隔" />
+            <div class="config-hint">QQ / 163 等邮箱需先在邮箱设置中开启 SMTP 服务并生成「授权码」；465 为加密端口（推荐），587 需服务器支持 STARTTLS</div>
+          </template>
+          <template v-else-if="channelForm.type === 'telegram'">
+            <el-input v-model="telegramCfg.bot_token" placeholder="Bot Token（找 @BotFather 创建机器人获取）" style="margin-bottom: 8px" />
+            <el-input v-model="telegramCfg.chat_id" placeholder="Chat ID（向 @userinfobot 发消息可查询）" />
+            <div class="config-hint">先给你的机器人发送任意一条消息，然后向 @userinfobot 查询 Chat ID；群组 Chat ID 通常以 -100 开头</div>
+          </template>
           <template v-else>
             <el-input
               v-model="channelForm.config"
@@ -189,6 +210,18 @@ const channelDialog = ref(false)
 const channelForm = ref({ id: 0, name: '', type: 'webhook', config: '', enabled: true })
 // 钉钉渠道专用字段：安全设置三选一（加签 / 自定义关键词 / IP 白名单）
 const dingtalkCfg = ref({ webhook: '', secret: '', keyword: '' })
+// 邮件渠道专用字段（to 以逗号分隔的字符串呈现，提交时转数组）
+const emailCfg = ref({ host: '', port: 465, username: '', password: '', to: '' })
+const emailPreset = ref('')
+const emailPresets = [
+  { label: 'QQ 邮箱（smtp.qq.com）', host: 'smtp.qq.com', port: 465 },
+  { label: '网易 163（smtp.163.com）', host: 'smtp.163.com', port: 465 },
+  { label: '网易 126（smtp.126.com）', host: 'smtp.126.com', port: 465 },
+  { label: 'Gmail（smtp.gmail.com）', host: 'smtp.gmail.com', port: 465 },
+  { label: 'Outlook / Microsoft 365（587）', host: 'smtp.office365.com', port: 587 },
+]
+// Telegram 渠道专用字段
+const telegramCfg = ref({ bot_token: '', chat_id: '' })
 const testingId = ref(0)
 const testingForm = ref(false)
 
@@ -197,15 +230,10 @@ const ruleForm = ref({ id: 0, name: '', kind: 'domain_expire', offsetList: [60, 
 
 const configPlaceholder = computed(() => ({
   webhook: 'https://your-server.com/hook（接收 {"title","content"} JSON）',
-  dingtalk: '钉钉机器人 Webhook 地址',
   wecom: '企业微信群机器人 Webhook 地址',
-  email: '{"host":"smtp.qq.com","port":465,"username":"a@b.com","password":"xx","from":"a@b.com","to":["me@x.com"]}',
-  telegram: '{"bot_token":"123:abc","chat_id":"456"}',
 }[channelForm.value.type] || '{}'))
 
-const configHint = computed(() =>
-  ['email', 'telegram'].includes(channelForm.value.type) ? '配置为 JSON 格式（见占位提示）' : '直接填写 Webhook 地址即可'
-)
+const configHint = computed(() => '直接填写 Webhook 地址即可')
 
 const channelName = (id) => channels.value.find((c) => c.id === id)?.name || `#${id}`
 const parseChannelIDs = (s) => {
@@ -227,16 +255,62 @@ async function load() {
   }
 }
 
-// 打开弹窗：编辑时把已存 config 反解到表单（钉钉兼容裸 URL 旧数据）
+// 打开弹窗：编辑时把已存 config 反解到各渠道专用表单（钉钉兼容裸 URL 旧数据）
 function openChannelDialog(row) {
   if (row) {
     channelForm.value = { ...row }
-    syncConfigToDingtalk(row)
+    syncConfigToForm(row)
   } else {
     channelForm.value = { id: 0, name: '', type: 'webhook', config: '', enabled: true }
-    dingtalkCfg.value = { webhook: '', secret: '', keyword: '' }
+    resetCfgs()
   }
   channelDialog.value = true
+}
+
+const emptyEmailCfg = () => ({ host: '', port: 465, username: '', password: '', to: '' })
+
+// 把存储的 config 字符串反解到对应渠道的专用表单
+function syncConfigToForm(row) {
+  if (row.type === 'dingtalk') {
+    syncConfigToDingtalk(row)
+  } else if (row.type === 'email') {
+    try {
+      const cfg = JSON.parse(row.config)
+      emailCfg.value = {
+        host: cfg.host || '',
+        port: Number(cfg.port) || 465,
+        username: cfg.username || '',
+        password: cfg.password || '',
+        to: (cfg.to || []).join(','),
+      }
+    } catch {
+      emailCfg.value = emptyEmailCfg()
+    }
+    emailPreset.value = ''
+  } else if (row.type === 'telegram') {
+    try {
+      const cfg = JSON.parse(row.config)
+      telegramCfg.value = { bot_token: cfg.bot_token || '', chat_id: cfg.chat_id || '' }
+    } catch {
+      telegramCfg.value = { bot_token: '', chat_id: '' }
+    }
+  }
+}
+
+function resetCfgs() {
+  dingtalkCfg.value = { webhook: '', secret: '', keyword: '' }
+  emailCfg.value = emptyEmailCfg()
+  telegramCfg.value = { bot_token: '', chat_id: '' }
+  emailPreset.value = ''
+}
+
+// 快速填充常用邮箱服务商的 SMTP 地址与端口
+function applyEmailPreset(label) {
+  const p = emailPresets.find((x) => x.label === label)
+  if (p) {
+    emailCfg.value.host = p.host
+    emailCfg.value.port = p.port
+  }
 }
 
 // 把存储的 config 字符串解析到钉钉专用字段
@@ -278,17 +352,44 @@ async function doTestChannel(row) {
 // 切换渠道类型：清空已有配置
 function onTypeChange() {
   channelForm.value.config = ''
-  dingtalkCfg.value = { webhook: '', secret: '', keyword: '' }
+  resetCfgs()
 }
 
-// 渠道最终配置串：钉钉从专用字段组装，其余直接用文本框内容
+// 渠道最终配置串：钉钉/邮件/Telegram 从专用字段组装，其余直接用文本框内容
 function effectiveConfig() {
-  if (channelForm.value.type === 'dingtalk') {
+  const type = channelForm.value.type
+  if (type === 'dingtalk') {
     if (!dingtalkCfg.value.webhook.trim()) {
       ElMessage.warning('请先填写钉钉机器人 Webhook 地址')
       return ''
     }
     return dingtalkConfigString()
+  }
+  if (type === 'email') {
+    const e = emailCfg.value
+    if (!e.host.trim() || !e.to.trim()) {
+      ElMessage.warning('请填写 SMTP 服务器与收件人邮箱')
+      return ''
+    }
+    if (!e.username.trim()) {
+      ElMessage.warning('请填写发件邮箱账号')
+      return ''
+    }
+    return JSON.stringify({
+      host: e.host.trim(),
+      port: Number(e.port) || 465,
+      username: e.username.trim(),
+      password: e.password,
+      to: e.to.split(/[,，]/).map((s) => s.trim()).filter(Boolean),
+    })
+  }
+  if (type === 'telegram') {
+    const t = telegramCfg.value
+    if (!t.bot_token.trim() || !t.chat_id.trim()) {
+      ElMessage.warning('请填写 Bot Token 与 Chat ID')
+      return ''
+    }
+    return JSON.stringify({ bot_token: t.bot_token.trim(), chat_id: t.chat_id.trim() })
   }
   return channelForm.value.config
 }
