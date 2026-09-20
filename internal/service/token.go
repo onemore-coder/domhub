@@ -28,7 +28,8 @@ type CreateInput struct {
 	UserID     uint
 	Username   string
 	Name       string
-	ExpireDays int // 0 = 永不过期
+	Scope      string // readonly（默认）/ readwrite
+	ExpireDays int    // 0 = 永不过期
 }
 
 // CreateResult 签发结果（Token 明文仅此一次返回）。
@@ -46,6 +47,12 @@ func (s *TokenService) Create(in CreateInput) (*CreateResult, error) {
 	if in.ExpireDays < 0 || in.ExpireDays > 3650 {
 		return nil, errors.New("有效期须在 0~3650 天之间（0 = 永不过期）")
 	}
+	if in.Scope == "" {
+		in.Scope = model.TokenScopeReadOnly
+	}
+	if !model.ValidTokenScope(in.Scope) {
+		return nil, errors.New("scope 仅支持 readonly（只读）或 readwrite（读写）")
+	}
 
 	raw := make([]byte, 24)
 	if _, err := rand.Read(raw); err != nil {
@@ -57,6 +64,7 @@ func (s *TokenService) Create(in CreateInput) (*CreateResult, error) {
 	t := &model.ApiToken{
 		UserID:    in.UserID,
 		Name:      in.Name,
+		Scope:     in.Scope,
 		TokenHash: hex.EncodeToString(sum[:]),
 		Prefix:    plain[:len(model.ApiTokenPrefix)+8],
 	}
@@ -80,21 +88,24 @@ func (s *TokenService) Revoke(id, userID uint) error {
 	return s.tokens.Delete(id, userID)
 }
 
-// Resolve 鉴权中间件回调：明文 token → 用户三要素。
+// Resolve 鉴权中间件回调：明文 token → 用户三要素 + Token 权限范围。
 // 失败统一返回 ok=false（原因不透出给调用方）。
-func (s *TokenService) Resolve(plain string) (userID uint, username, role string, ok bool) {
+func (s *TokenService) Resolve(plain string) (userID uint, username, role, scope string, ok bool) {
 	if !strings.HasPrefix(plain, model.ApiTokenPrefix) {
-		return 0, "", "", false
+		return 0, "", "", "", false
 	}
 	sum := sha256.Sum256([]byte(plain))
 	t, err := s.tokens.FindValidByHash(hex.EncodeToString(sum[:]))
 	if err != nil {
-		return 0, "", "", false
+		return 0, "", "", "", false
 	}
 	u, err := s.users.FindByID(t.UserID)
 	if err != nil || u.Status != 1 {
-		return 0, "", "", false
+		return 0, "", "", "", false
+	}
+	if t.Scope == "" {
+		t.Scope = model.TokenScopeReadOnly // 旧数据兜底
 	}
 	go s.tokens.Touch(t.ID)
-	return u.ID, u.Username, u.Role, true
+	return u.ID, u.Username, u.Role, t.Scope, true
 }

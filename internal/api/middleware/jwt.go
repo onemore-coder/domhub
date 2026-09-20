@@ -20,8 +20,8 @@ const (
 // 返回 (role, active)；active=false 表示账号被禁用。
 type RoleLookup func(userID uint) (role string, active bool)
 
-// ApiTokenLookup API Token 鉴权回调：明文 token → 用户三要素。
-type ApiTokenLookup func(token string) (userID uint, username, role string, ok bool)
+// ApiTokenLookup API Token 鉴权回调：明文 token → 用户三要素 + 权限范围（readonly/readwrite）。
+type ApiTokenLookup func(token string) (userID uint, username, role, scope string, ok bool)
 
 // JWT 校验 Bearer Token，将用户信息注入上下文。
 // 支持两种凭据：
@@ -60,9 +60,17 @@ func JWT(secret string, lookup RoleLookup, apiTokenLookup ApiTokenLookup) gin.Ha
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "API Token 未启用"})
 				return
 			}
-			uid, username, role, ok := apiTokenLookup(cand)
+			uid, username, role, scope, ok := apiTokenLookup(cand)
 			if !ok {
 				continue
+			}
+			// 只读 Token 拦截写请求：REST API 与 MCP 共用 dht_ 凭据，scope 全局生效
+			if scope == "readonly" && c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+					"code":    403,
+					"message": "当前 API Token 为只读权限，写操作需在「安全设置 → API Token」重新生成读写（readwrite）令牌",
+				})
+				return
 			}
 			c.Set(CtxUserID, uid)
 			c.Set(CtxUsername, username)

@@ -57,7 +57,8 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 	accountSvc := service.NewCloudAccountService(accountRepo, domainRepo, taskRepo, cipher)
 	alertSvc := service.NewAlertService(alertRepo, domainRepo)
 	dnsSvc := service.NewDNSService(accountRepo, cipher, auditRepo, grantRepo)
-	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), repo.NewDnsRecordRepo(db), grantRepo, dnsSvc)
+	dnsRecordRepo := repo.NewDnsRecordRepo(db)
+	zoneSvc := service.NewZoneService(accountRepo, repo.NewZoneRepo(db), dnsRecordRepo, grantRepo, dnsSvc)
 	// 云端写成功后回源刷新该 Zone 的解析记录镜像（云端优先，失败不影响操作结果）
 	dnsSvc.OnChange = func(accountID uint, zone string) {
 		if _, err := zoneSvc.SyncRecordsFor(accountID, zone); err != nil {
@@ -270,7 +271,7 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		}
 		for _, cand := range cands {
 			if strings.HasPrefix(cand, model.ApiTokenPrefix) {
-				if _, _, _, ok := tokenSvc.Resolve(cand); ok {
+				if _, _, _, _, ok := tokenSvc.Resolve(cand); ok {
 					c.Next()
 					return
 				}
@@ -288,6 +289,8 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		Alerts:   alertRepo,
 		Zones:    zoneSvc,
 		Certs:    certSvc,
+		DNS:      dnsSvc,
+		Records:  dnsRecordRepo,
 	})))
 
 	// 健康检查（免鉴权）：探活 + DB 连通性；DB 不可用时返回 503

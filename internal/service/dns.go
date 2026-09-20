@@ -51,11 +51,13 @@ func (s *DNSService) hasZoneAccess(userID uint, role string, accountID uint, zon
 	return s.grants.Exists(userID, accountID, zone)
 }
 
-// Actor 操作者三要素（来自 JWT 上下文）。
+// Actor 操作者三要素（来自 JWT 上下文或 API Token）。
+// Scope 仅 API Token 鉴权路径填充（readonly/readwrite）；JWT 会话为空，视同全权。
 type Actor struct {
 	ID       uint
 	Username string
 	Role     string
+	Scope    string
 }
 
 // buildDNSProvider 构建账号对应的 DNS Provider。
@@ -146,6 +148,8 @@ func (s *DNSService) CreateRecord(accountID uint, zone string, rec provider.Reco
 	}
 	p, err := s.buildDNSProvider(a)
 	if err != nil {
+		// 凭证/厂商构建失败同样落审计，保证写操作全程可追溯
+		s.writeAudit(op.ID, op.Username, "dns.create", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
 		return "", err
 	}
 	if rec.TTL <= 0 {
@@ -174,6 +178,7 @@ func (s *DNSService) UpdateRecord(accountID uint, zone string, rec provider.Reco
 	}
 	p, err := s.buildDNSProvider(a)
 	if err != nil {
+		s.writeAudit(op.ID, op.Username, "dns.update", a.Provider+"/"+zone+"/"+rec.Type+" "+rec.Name, rec, err)
 		return err
 	}
 	if rec.TTL <= 0 {
@@ -216,6 +221,7 @@ func (s *DNSService) DeleteRecord(accountID uint, zone, recordID, desc string, o
 	}
 	p, err := s.buildDNSProvider(a)
 	if err != nil {
+		s.writeAudit(op.ID, op.Username, "dns.delete", a.Provider+"/"+zone+"/"+desc, map[string]string{"record_id": recordID}, err)
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

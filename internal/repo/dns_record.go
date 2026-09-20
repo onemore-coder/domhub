@@ -78,6 +78,15 @@ func (r *DnsRecordRepo) ListFiltered(accountID uint, zoneRefs []ZoneRef, q, rtyp
 	return list, err
 }
 
+// FindByID 按镜像主键取单条记录（MCP 写工具定位记录用）。
+func (r *DnsRecordRepo) FindByID(id uint) (*model.DnsRecord, error) {
+	var rec model.DnsRecord
+	if err := r.db.First(&rec, id).Error; err != nil {
+		return nil, err
+	}
+	return &rec, nil
+}
+
 // CertHostRow 证书监控主机发现行。
 type CertHostRow struct {
 	CloudAccountID uint

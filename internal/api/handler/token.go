@@ -33,12 +33,13 @@ func (h *TokenHandler) List(c *gin.Context) {
 	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": list})
 }
 
-// Create POST /api/v1/tokens {"name":"ci","expire_days":30}
+// Create POST /api/v1/tokens {"name":"ci","expire_days":30,"scope":"readonly"}
 // 明文 token 仅在本响应返回一次。
 func (h *TokenHandler) Create(c *gin.Context) {
 	actor := ctxActor(c)
 	var req struct {
 		Name       string `json:"name"`
+		Scope      string `json:"scope"`
 		ExpireDays int    `json:"expire_days"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,7 +47,8 @@ func (h *TokenHandler) Create(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.Create(service.CreateInput{
-		UserID: actor.ID, Username: actor.Username, Name: req.Name, ExpireDays: req.ExpireDays,
+		UserID: actor.ID, Username: actor.Username, Name: req.Name,
+		Scope: req.Scope, ExpireDays: req.ExpireDays,
 	})
 	if err != nil {
 		c.JSON(400, gin.H{"code": 400, "message": err.Error()})

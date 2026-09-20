@@ -16,14 +16,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/onemore-coder/domhub/internal/model"
+	"github.com/onemore-coder/domhub/internal/provider"
 	"github.com/onemore-coder/domhub/internal/repo"
 	"github.com/onemore-coder/domhub/internal/service"
 )
 
 // Version MCP 服务器版本（随工具集演进递增）。
-const Version = "0.1.0"
+const Version = "0.2.0"
 
-// Deps MCP 服务器依赖（只读访问业务数据）。
+// Deps MCP 服务器依赖。
 type Deps struct {
 	Tokens   *service.TokenService
 	Domains  *repo.DomainRepo
@@ -31,10 +32,16 @@ type Deps struct {
 	Alerts   *repo.AlertRepo
 	Zones    *service.ZoneService
 	Certs    *service.CertService
+	DNS      *service.DNSService    // 写工具：记录增删改（复用 Zone 授权与审计）
+	Records  *repo.DnsRecordRepo    // 写工具：镜像记录定位（record_id → 账号/Zone/厂商记录 ID）
 }
 
-// NewServer 构建注册全部只读工具的 MCP Server（导出以便测试直连）。
+// NewServer 构建注册全部工具的 MCP Server（导出以便测试直连）。
 func NewServer(d Deps) *mcp.Server {
+	// fail-fast：写工具依赖缺失时启动即报错，避免请求期空指针
+	if d.Tokens == nil || d.DNS == nil || d.Records == nil || d.Zones == nil {
+		panic("mcp.Deps 配置不完整：Tokens / DNS / Records / Zones 均不可为 nil")
+	}
 	s := mcp.NewServer(&mcp.Implementation{Name: "domhub", Version: Version}, nil)
 	registerTools(s, d)
 	return s
@@ -55,6 +62,11 @@ func registerTools(s *mcp.Server, d Deps) {
 	add(s, d, "list_certs", "查询 SSL 证书监控状态（含剩余天数，可只看 N 天内到期）", d.listCerts)
 	add(s, d, "list_cloud_accounts", "查询已接入的云账号列表（密钥脱敏，仅元信息）", d.listAccounts)
 	add(s, d, "list_alert_logs", "查询最近的告警发送记录（域名/证书到期提醒）", d.listAlertLogs)
+	// 写工具（readwrite Token 专属；记录定位用镜像表主键 record_id，
+	// 可先调 list_dns_records 拿到 ID；全部操作写入审计日志）
+	add(s, d, "create_dns_record", "创建 DNS 解析记录（写操作，readwrite Token）：指定 Zone + 主机记录/类型/值", d.createRecord)
+	add(s, d, "update_dns_record", "修改 DNS 解析记录（写操作，readwrite Token）：按镜像 record_id 定位，可改记录值/TTL/优先级/代理状态", d.updateRecord)
+	add(s, d, "delete_dns_record", "删除 DNS 解析记录（写操作，readwrite Token）：按镜像 record_id 定位，删除前应与用户确认", d.deleteRecord)
 }
 
 // add 统一的注册包装：鉴权（dht_ Token → Actor）+ 错误包装，减少样板代码。
@@ -89,12 +101,21 @@ func actorFromReq(d Deps, req *mcp.CallToolRequest) (service.Actor, error) {
 		if !strings.HasPrefix(c, model.ApiTokenPrefix) {
 			continue
 		}
-		if uid, username, role, ok := d.Tokens.Resolve(c); ok {
-			return service.Actor{ID: uid, Username: username, Role: role}, nil
+		if uid, username, role, scope, ok := d.Tokens.Resolve(c); ok {
+			return service.Actor{ID: uid, Username: username, Role: role, Scope: scope}, nil
 		}
 	}
-	return service.Actor{}, fmt.Errorf("鉴权失败：需要有效的 dht_ API Token，" +
+	return service.Actor{}, fmt.Errorf("鉴权失败：需要有效的 dht_ API Token，"+
 		"请在 DomHub「安全设置 → API Token」页生成，并以 Authorization: Bearer dht_xxx 头传入")
+}
+
+// requireWrite 写工具前置校验：仅 readwrite Token 可执行写操作。
+func requireWrite(op service.Actor) error {
+	if op.Scope == model.TokenScopeReadWrite {
+		return nil
+	}
+	return fmt.Errorf("当前 API Token 为只读（readonly）权限，无法执行写操作；" +
+		"请在 DomHub「安全设置 → API Token」生成读写（readwrite）令牌后重试")
 }
 
 // ---- 工具实现 ----
@@ -199,24 +220,28 @@ func (d Deps) listRecords(_ context.Context, op service.Actor, in listRecordsIn)
 	if limit > 200 {
 		limit = 200
 	}
-	accountID := in.AccountID
-	// 只指定 Zone 未指定账号时，从授权可见的 Zone 视图中自动解析归属账号
-	if in.Zone != "" && accountID == 0 {
-		views, err := d.Zones.ListCached(op)
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range views {
-			if v.Name == in.Zone {
-				accountID = v.CloudAccountID
-				break
-			}
-		}
-		if accountID == 0 {
-			return nil, fmt.Errorf("未找到 Zone %s（请检查名称，或确认该 Zone 归属的云账号已接入）", in.Zone)
-		}
+	accountID, err := d.resolveAccountID(op, in.Zone, in.AccountID)
+	if err != nil {
+		return nil, err
 	}
 	return d.Zones.ListRecordsCached(op, accountID, in.Zone, in.Keyword, in.RecordType, limit)
+}
+
+// resolveAccountID 仅指定 Zone 未指定账号时，从授权可见的 Zone 视图自动解析归属账号。
+func (d Deps) resolveAccountID(op service.Actor, zone string, accountID uint) (uint, error) {
+	if zone == "" || accountID != 0 {
+		return accountID, nil
+	}
+	views, err := d.Zones.ListCached(op)
+	if err != nil {
+		return 0, err
+	}
+	for _, v := range views {
+		if v.Name == zone {
+			return v.CloudAccountID, nil
+		}
+	}
+	return 0, fmt.Errorf("未找到 Zone %s（请检查名称，或确认该 Zone 归属的云账号已接入）", zone)
 }
 
 type searchDNSIn struct {
@@ -335,3 +360,101 @@ func (d Deps) listAlertLogs(_ context.Context, _ service.Actor, in listAlertLogs
 
 // ginH 轻量 map（避免 mcp 包直接依赖 gin）。
 type ginH = map[string]any
+
+// ---- 写工具（readwrite Token 专属）----
+
+type createRecordIn struct {
+	AccountID uint   `json:"account_id,omitempty" jsonschema:"云账号 ID，可空（仅给 Zone 时自动按归属账号解析）"`
+	Zone      string `json:"zone" jsonschema:"Zone 名称（如 example.com）"`
+	Name      string `json:"name" jsonschema:"主机记录：@ 表示根域名，www 为子域前缀"`
+	Type      string `json:"type" jsonschema:"记录类型：A / AAAA / CNAME / TXT / MX 等"`
+	Value     string `json:"value" jsonschema:"记录值（多值以换行分隔）"`
+	TTL       int    `json:"ttl,omitempty" jsonschema:"TTL 秒数，默认 600"`
+	Priority  int    `json:"priority,omitempty" jsonschema:"MX/SRV 优先级，其他类型留 0"`
+	Line      string `json:"line,omitempty" jsonschema:"运营商线路（仅国内厂商）：default / 移动 / 联通 / 电信，可空"`
+	Proxied   bool   `json:"proxied,omitempty" jsonschema:"是否开启 CDN 代理（仅 Cloudflare 橙云记录）"`
+}
+
+func (d Deps) createRecord(_ context.Context, op service.Actor, in createRecordIn) (any, error) {
+	if err := requireWrite(op); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(in.Zone) == "" || strings.TrimSpace(in.Type) == "" {
+		return nil, fmt.Errorf("zone 与 type 为必填参数")
+	}
+	accountID, err := d.resolveAccountID(op, in.Zone, in.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	rec := provider.RecordInfo{
+		Name: in.Name, Type: strings.ToUpper(in.Type), Value: in.Value,
+		TTL: in.TTL, Priority: in.Priority, Line: in.Line, Proxied: in.Proxied,
+	}
+	id, err := d.DNS.CreateRecord(accountID, in.Zone, rec, op)
+	if err != nil {
+		return nil, err
+	}
+	return ginH{"success": true, "provider_record_id": id,
+		"record": rec, "zone": in.Zone, "account_id": accountID}, nil
+}
+
+type updateRecordIn struct {
+	RecordID uint   `json:"record_id" jsonschema:"解析记录的镜像 ID（先调 list_dns_records 获取）"`
+	Value    string `json:"value,omitempty" jsonschema:"新记录值，留空保持不变"`
+	TTL      int    `json:"ttl,omitempty" jsonschema:"新 TTL 秒数，0 表示保持不变"`
+	Priority *int   `json:"priority,omitempty" jsonschema:"新 MX/SRV 优先级（指针区分未传），可空"`
+	Proxied  *bool  `json:"proxied,omitempty" jsonschema:"CDN 代理开关（指针区分未传），可空"`
+}
+
+func (d Deps) updateRecord(_ context.Context, op service.Actor, in updateRecordIn) (any, error) {
+	if err := requireWrite(op); err != nil {
+		return nil, err
+	}
+	rec, err := d.Records.FindByID(in.RecordID)
+	if err != nil {
+		return nil, fmt.Errorf("镜像记录 %d 不存在（record_id 需先通过 list_dns_records 查询获取）", in.RecordID)
+	}
+	updated := provider.RecordInfo{
+		ID: rec.ProviderRecordID, Name: rec.Name, Type: rec.Type, Value: rec.Value,
+		TTL: rec.TTL, Priority: rec.Priority, Line: rec.Line, Status: rec.Status,
+		Remark: rec.Remark, Proxied: rec.Proxied,
+	}
+	if in.Value != "" {
+		updated.Value = in.Value
+	}
+	if in.TTL > 0 {
+		updated.TTL = in.TTL
+	}
+	if in.Priority != nil {
+		updated.Priority = *in.Priority
+	}
+	if in.Proxied != nil {
+		updated.Proxied = *in.Proxied
+	}
+	if err := d.DNS.UpdateRecord(rec.CloudAccountID, rec.ZoneName, updated, op); err != nil {
+		return nil, err
+	}
+	return ginH{"success": true, "record": updated,
+		"zone": rec.ZoneName, "account_id": rec.CloudAccountID}, nil
+}
+
+type deleteRecordIn struct {
+	RecordID uint `json:"record_id" jsonschema:"解析记录的镜像 ID（先调 list_dns_records 获取；删除前应与用户确认）"`
+}
+
+func (d Deps) deleteRecord(_ context.Context, op service.Actor, in deleteRecordIn) (any, error) {
+	if err := requireWrite(op); err != nil {
+		return nil, err
+	}
+	rec, err := d.Records.FindByID(in.RecordID)
+	if err != nil {
+		return nil, fmt.Errorf("镜像记录 %d 不存在（record_id 需先通过 list_dns_records 查询获取）", in.RecordID)
+	}
+	if err := d.DNS.DeleteRecord(rec.CloudAccountID, rec.ZoneName, rec.ProviderRecordID,
+		rec.Type+" "+rec.Name, op); err != nil {
+		return nil, err
+	}
+	return ginH{"success": true, "deleted": ginH{
+		"id": rec.ID, "zone": rec.ZoneName, "name": rec.Name, "type": rec.Type, "value": rec.Value,
+	}}, nil
+}

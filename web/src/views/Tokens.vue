@@ -5,7 +5,7 @@
         <div class="section-header">
           <div>
             <span>API Token</span>
-            <span class="hint">用于 CI / 自动化脚本调用 DomHub API，请求头携带 Authorization: Bearer dht_xxx</span>
+            <span class="hint">CI / 自动化脚本调用 DomHub API、AI 助手通过 MCP 接入共用此类令牌；只读令牌无法执行写操作</span>
           </div>
           <el-button size="small" type="primary" @click="openCreate">生成令牌</el-button>
         </div>
@@ -15,6 +15,13 @@
         <el-table-column label="令牌前缀" width="160">
           <template #default="{ row }">
             <code class="prefix">{{ row.prefix }}…</code>
+          </template>
+        </el-table-column>
+        <el-table-column label="权限" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.scope === 'readwrite' ? 'warning' : 'info'">
+              {{ row.scope === 'readwrite' ? '读写' : '只读' }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="有效期至" width="180">
@@ -87,6 +94,15 @@
         <el-form-item label="名称" required>
           <el-input v-model="form.name" placeholder="如：CI 流水线、备份脚本" maxlength="32" />
         </el-form-item>
+        <el-form-item label="权限">
+          <el-radio-group v-model="form.scope">
+            <el-radio value="readonly">只读（推荐）</el-radio>
+            <el-radio value="readwrite">读写</el-radio>
+          </el-radio-group>
+          <div class="scope-hint">
+            只读：查询类接口与 MCP 读工具；读写：额外允许创建 / 修改 / 删除解析记录等写操作
+          </div>
+        </el-form-item>
         <el-form-item label="有效期">
           <el-select v-model="form.expire_days" style="width: 100%">
             <el-option :value="0" label="永不过期" />
@@ -123,7 +139,7 @@ const loading = ref(false)
 const createVisible = ref(false)
 const creating = ref(false)
 const created = ref('')
-const form = ref({ name: '', expire_days: 0 })
+const form = ref({ name: '', scope: 'readonly', expire_days: 0 })
 const apiBase = `${window.location.origin}/api/v1`
 
 // ---------- API 接口目录（与路由保持同步；body 为 JSON 请求体示例） ----------
@@ -223,7 +239,7 @@ const CATALOG = [
   ]},
   { name: 'API Token', items: [
     { m: 'GET', p: '/tokens', desc: '令牌列表（仅前缀）' },
-    { m: 'POST', p: '/tokens', desc: '生成令牌（明文仅返回一次）', body: { name: 'CI 流水线', expire_days: 0 } },
+    { m: 'POST', p: '/tokens', desc: '生成令牌（明文仅返回一次）', body: { name: 'CI 流水线', scope: 'readonly', expire_days: 0 } },
     { m: 'DELETE', p: '/tokens/:id', desc: '吊销令牌' },
   ]},
   { name: '审计与系统', items: [
@@ -291,7 +307,7 @@ async function load() {
 }
 
 function openCreate() {
-  form.value = { name: '', expire_days: 0 }
+  form.value = { name: '', scope: 'readonly', expire_days: 0 }
   created.value = ''
   createVisible.value = true
 }
@@ -360,6 +376,12 @@ function formatTime(t) {
 .plain-token {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 13px;
+}
+.scope-hint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
 }
 .muted {
   color: var(--el-text-color-secondary);
