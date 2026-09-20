@@ -3,10 +3,15 @@ package notify
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/smtp"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,7 +32,8 @@ func Build(chType, config string) (Notifier, error) {
 			Headers map[string]string `json:"headers"`
 		}
 		if err := json.Unmarshal([]byte(config), &cfg); err != nil {
-			return nil, fmt.Errorf("webhook 配置解析失败: %w", err)
+			// 兼容直接填裸 URL 的用法
+			cfg.URL = strings.TrimSpace(config)
 		}
 		if cfg.URL == "" {
 			return nil, fmt.Errorf("webhook 缺少 url")
@@ -35,24 +41,23 @@ func Build(chType, config string) (Notifier, error) {
 		return &webhookNotifier{url: cfg.URL, headers: cfg.Headers}, nil
 
 	case "dingtalk":
-		var cfg struct {
-			Webhook string `json:"webhook"` // 钉钉机器人 Webhook 地址（含 access_token）
-			Secret  string `json:"secret"`  // 可选：加签密钥
-		}
+		var cfg dingtalkConfig
 		if err := json.Unmarshal([]byte(config), &cfg); err != nil {
-			return nil, fmt.Errorf("钉钉配置解析失败: %w", err)
+			// 兼容直接填裸 Webhook 地址的旧用法
+			cfg = dingtalkConfig{Webhook: strings.TrimSpace(config)}
 		}
 		if cfg.Webhook == "" {
 			return nil, fmt.Errorf("钉钉缺少 webhook")
 		}
-		return &dingtalkNotifier{webhook: cfg.Webhook, secret: cfg.Secret}, nil
+		return &dingtalkNotifier{webhook: cfg.Webhook, secret: cfg.Secret, keyword: cfg.Keyword}, nil
 
 	case "wecom":
 		var cfg struct {
 			Webhook string `json:"webhook"` // 企业微信群机器人 Webhook
 		}
 		if err := json.Unmarshal([]byte(config), &cfg); err != nil {
-			return nil, fmt.Errorf("企业微信配置解析失败: %w", err)
+			// 兼容直接填裸 Webhook 地址的用法
+			cfg.Webhook = strings.TrimSpace(config)
 		}
 		if cfg.Webhook == "" {
 			return nil, fmt.Errorf("企业微信缺少 webhook")
@@ -132,17 +137,46 @@ func (w *webhookNotifier) Send(title, content string) error {
 
 // ---- 钉钉 ----
 
+type dingtalkConfig struct {
+	Webhook string `json:"webhook"` // 机器人 Webhook 地址（含 access_token）
+	Secret  string `json:"secret"`  // 加签密钥（SEC 开头），安全设置选「加签」时必填
+	Keyword string `json:"keyword"` // 自定义关键词，安全设置选「自定义关键词」时必填
+}
+
 type dingtalkNotifier struct {
 	webhook string
 	secret  string
+	keyword string
+}
+
+// signedURL 安全设置为「加签」时，按官方规范对 timestamp+"\n"+secret 计算
+// HMAC-SHA256 并 base64，追加 timestamp / sign 参数。
+func (d *dingtalkNotifier) signedURL() string {
+	if d.secret == "" {
+		return d.webhook
+	}
+	ts := time.Now().UnixMilli()
+	mac := hmac.New(sha256.New, []byte(d.secret))
+	mac.Write([]byte(strconv.FormatInt(ts, 10) + "\n" + d.secret))
+	sign := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	sep := "?"
+	if strings.Contains(d.webhook, "?") {
+		sep = "&"
+	}
+	return fmt.Sprintf("%s%stimestamp=%d&sign=%s", d.webhook, sep, ts, url.QueryEscape(sign))
 }
 
 func (d *dingtalkNotifier) Send(title, content string) error {
-	return postJSON(d.webhook, nil, map[string]any{
+	text := fmt.Sprintf("### %s\n\n%s", title, strings.ReplaceAll(content, "\n", "\n\n"))
+	// 安全设置为「自定义关键词」时，消息必须包含关键词：缺失则自动补在开头
+	if d.keyword != "" && !strings.Contains(text, d.keyword) {
+		text = "**" + d.keyword + "**\n\n" + text
+	}
+	return postJSON(d.signedURL(), nil, map[string]any{
 		"msgtype": "markdown",
 		"markdown": map[string]string{
 			"title": title,
-			"text":  fmt.Sprintf("### %s\n\n%s", title, strings.ReplaceAll(content, "\n", "\n\n")),
+			"text":  text,
 		},
 	})
 }

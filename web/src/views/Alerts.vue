@@ -91,17 +91,25 @@
           <el-input v-model="channelForm.name" placeholder="如：运维钉钉群" />
         </el-form-item>
         <el-form-item label="类型" required>
-          <el-select v-model="channelForm.type" style="width: 100%" @change="channelForm.config = ''">
+          <el-select v-model="channelForm.type" style="width: 100%" @change="onTypeChange">
             <el-option v-for="(label, key) in channelLabels" :key="key" :value="key" :label="label" />
           </el-select>
         </el-form-item>
         <el-form-item label="渠道配置" required>
-          <el-input
-            v-model="channelForm.config"
-            type="textarea" :rows="3"
-            :placeholder="configPlaceholder"
-          />
-          <div class="config-hint">{{ configHint }}</div>
+          <template v-if="channelForm.type === 'dingtalk'">
+            <el-input v-model="dingtalkCfg.webhook" placeholder="钉钉机器人 Webhook 地址（含 access_token）" style="margin-bottom: 8px" />
+            <el-input v-model="dingtalkCfg.secret" placeholder="加签密钥 SECxxxx（安全设置选「加签」时必填）" style="margin-bottom: 8px" />
+            <el-input v-model="dingtalkCfg.keyword" placeholder="自定义关键词（安全设置选「自定义关键词」时必填）" />
+            <div class="config-hint">钉钉机器人安全设置三选一：加签 → 填加签密钥；自定义关键词 → 填关键词（自动附带在消息开头）；IP 白名单 → 请将部署机出口 IP 加入白名单，此处两项留空即可</div>
+          </template>
+          <template v-else>
+            <el-input
+              v-model="channelForm.config"
+              type="textarea" :rows="3"
+              :placeholder="configPlaceholder"
+            />
+            <div class="config-hint">{{ configHint }}</div>
+          </template>
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="channelForm.enabled" />
@@ -179,6 +187,8 @@ const logs = ref([])
 
 const channelDialog = ref(false)
 const channelForm = ref({ id: 0, name: '', type: 'webhook', config: '', enabled: true })
+// 钉钉渠道专用字段：安全设置三选一（加签 / 自定义关键词 / IP 白名单）
+const dingtalkCfg = ref({ webhook: '', secret: '', keyword: '' })
 const testingId = ref(0)
 const testingForm = ref(false)
 
@@ -217,13 +227,40 @@ async function load() {
   }
 }
 
+// 打开弹窗：编辑时把已存 config 反解到表单（钉钉兼容裸 URL 旧数据）
 function openChannelDialog(row) {
   if (row) {
     channelForm.value = { ...row }
+    syncConfigToDingtalk(row)
   } else {
     channelForm.value = { id: 0, name: '', type: 'webhook', config: '', enabled: true }
+    dingtalkCfg.value = { webhook: '', secret: '', keyword: '' }
   }
   channelDialog.value = true
+}
+
+// 把存储的 config 字符串解析到钉钉专用字段
+function syncConfigToDingtalk(row) {
+  if (row.type !== 'dingtalk') return
+  try {
+    const cfg = JSON.parse(row.config)
+    dingtalkCfg.value = {
+      webhook: cfg.webhook || '',
+      secret: cfg.secret || '',
+      keyword: cfg.keyword || '',
+    }
+  } catch {
+    dingtalkCfg.value = { webhook: row.config || '', secret: '', keyword: '' }
+  }
+}
+
+// 把钉钉专用字段序列化回 config JSON
+function dingtalkConfigString() {
+  return JSON.stringify({
+    webhook: dingtalkCfg.value.webhook.trim(),
+    secret: dingtalkCfg.value.secret.trim(),
+    keyword: dingtalkCfg.value.keyword.trim(),
+  })
 }
 
 async function doTestChannel(row) {
@@ -238,15 +275,31 @@ async function doTestChannel(row) {
   }
 }
 
+// 切换渠道类型：清空已有配置
+function onTypeChange() {
+  channelForm.value.config = ''
+  dingtalkCfg.value = { webhook: '', secret: '', keyword: '' }
+}
+
+// 渠道最终配置串：钉钉从专用字段组装，其余直接用文本框内容
+function effectiveConfig() {
+  if (channelForm.value.type === 'dingtalk') {
+    if (!dingtalkCfg.value.webhook.trim()) {
+      ElMessage.warning('请先填写钉钉机器人 Webhook 地址')
+      return ''
+    }
+    return dingtalkConfigString()
+  }
+  return channelForm.value.config
+}
+
 async function doTestChannelForm() {
   const f = channelForm.value
-  if (!f.config) {
-    ElMessage.warning('请先填写渠道配置')
-    return
-  }
+  const config = effectiveConfig()
+  if (!config) return
   testingForm.value = true
   try {
-    const res = await testChannel({ type: f.type, config: f.config })
+    const res = await testChannel({ type: f.type, config })
     res.code === 0 ? ElMessage.success(res.message) : ElMessage.error(res.message)
   } catch {
     // 拦截器已弹出错误提示
@@ -257,14 +310,16 @@ async function doTestChannelForm() {
 
 async function saveChannel() {
   const f = channelForm.value
-  if (!f.name || !f.config) {
+  const config = effectiveConfig()
+  if (!f.name || !config) {
     ElMessage.warning('请完整填写名称与渠道配置')
     return
   }
+  const payload = { ...f, config }
   if (f.id) {
-    await updateChannel(f.id, f)
+    await updateChannel(f.id, payload)
   } else {
-    await createChannel(f)
+    await createChannel(payload)
   }
   ElMessage.success('已保存')
   channelDialog.value = false
