@@ -2,6 +2,12 @@
 
 本项目的所有重要变更都记录在本文件中。
 
+## [Unreleased]
+
+### 新增
+
+- **内置 MCP 服务器（AI 接入）**：新增 `/mcp` 端点（Streamable HTTP，官方 Go SDK 实现），Claude / Cursor / WorkBuddy 等 AI 助手填 URL + API Token 即可查询 DomHub 数据；首期开放 8 个只读工具（概览 / 域名 / Zone / 解析记录 / 全局搜索 / 证书监控 / 云账号 / 告警日志），复用 `dht_` API Token 鉴权与 Zone 级数据授权，云账号密钥全程脱敏
+
 ## [v0.7.3] - 2026-09-20
 
 ### 新增

@@ -14,6 +14,7 @@ import (
 
 	"github.com/onemore-coder/domhub/internal/api/handler"
 	"github.com/onemore-coder/domhub/internal/api/middleware"
+	"github.com/onemore-coder/domhub/internal/mcp"
 	"github.com/onemore-coder/domhub/internal/model"
 	"github.com/onemore-coder/domhub/internal/pkg/config"
 	"github.com/onemore-coder/domhub/internal/pkg/cryptox"
@@ -256,6 +257,38 @@ func NewRouter(db *gorm.DB, cfg *config.Config, staticFS fs.FS, scheduleApplier 
 		protected.GET("/settings", adminOnly, settingsH.Get)
 		protected.PUT("/settings/schedules", adminOnly, settingsH.Update)
 	}
+
+	// MCP（AI 接入）：标准 MCP 协议（Streamable HTTP），凭据复用 dht_ API Token。
+	// 门禁先行拦截无效凭据；工具内部再按 Token 解析用户并做数据授权。
+	mcpGate := func(c *gin.Context) {
+		var cands []string
+		if xk := c.GetHeader("X-Api-Key"); xk != "" {
+			cands = append(cands, xk)
+		}
+		if auth := c.GetHeader("Authorization"); auth != "" {
+			cands = append(cands, strings.TrimPrefix(auth, "Bearer "))
+		}
+		for _, cand := range cands {
+			if strings.HasPrefix(cand, model.ApiTokenPrefix) {
+				if _, _, _, ok := tokenSvc.Resolve(cand); ok {
+					c.Next()
+					return
+				}
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+			"code":    401,
+			"message": "MCP 需要有效的 dht_ API Token（Authorization: Bearer dht_xxx 或 X-Api-Key 头），请在 DomHub「安全设置 → API Token」页生成",
+		})
+	}
+	r.Any("/mcp", mcpGate, gin.WrapH(mcp.Handler(mcp.Deps{
+		Tokens:   tokenSvc,
+		Domains:  domainRepo,
+		Accounts: accountRepo,
+		Alerts:   alertRepo,
+		Zones:    zoneSvc,
+		Certs:    certSvc,
+	})))
 
 	// 健康检查（免鉴权）：探活 + DB 连通性；DB 不可用时返回 503
 	r.GET("/healthz", func(c *gin.Context) {

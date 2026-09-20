@@ -126,6 +126,46 @@ curl -H "Authorization: Bearer dht_xxxxxxxxxxxx" \
   http://localhost:8080/api/v1/domains
 ```
 
+### AI 接入（MCP）
+
+DomHub 内置 MCP（Model Context Protocol）服务器，Claude / Cursor / WorkBuddy 等支持 MCP 的 AI 助手可以**直接查询**你的域名、DNS 解析、证书到期与告警数据——无需任何中间层。
+
+**接入步骤**（约 1 分钟）：
+
+1. 在「安全设置 → API Token」页生成一个 Token（`dht_` 前缀）
+2. 在 AI 客户端的 MCP 配置中加入 DomHub：
+
+```json
+{
+  "mcpServers": {
+    "domhub": {
+      "type": "http",
+      "url": "http://your-domhub-host:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer dht_xxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+> Claude Desktop / Cursor 填在 MCP 服务器配置里；不支持 `headers` 字段的客户端可用 `X-Api-Key` 头或网关注入。
+
+**内置只读工具**（首期 8 个，写入类工具按 Roadmap 逐步开放）：
+
+| 工具 | 说明 |
+|---|---|
+| `overview` | 数据概览：厂商分布、30 天内到期域名/证书统计 |
+| `list_domains` | 域名台账（关键词 / 厂商 / 到期时间过滤，分页） |
+| `list_zones` | 已托管 DNS Zone 列表 |
+| `list_dns_records` | DNS 解析记录（按账号 / Zone / 类型 / 关键词过滤） |
+| `search_dns` | 跨 Zone 全局搜索 |
+| `list_certs` | SSL 证书监控状态（含剩余天数） |
+| `list_cloud_accounts` | 云账号元信息（密钥脱敏） |
+| `list_alert_logs` | 最近告警发送记录 |
+
+**安全说明**：MCP 复用 API Token 鉴权与数据授权体系（非 admin 用户的 Token 只能看到被授权的 Zone）；AI 的每次查询与工具调用均可在审计日志中追溯。
+
 ## Roadmap
 
 | 里程碑 | 内容 | 状态 |
