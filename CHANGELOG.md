@@ -2,7 +2,7 @@
 
 本项目的所有重要变更都记录在本文件中。
 
-## [Unreleased]
+## [v0.8.0] - 2026-09-21
 
 ### 新增
 
@@ -10,6 +10,7 @@
 - **API Token 权限分档（readonly / readwrite）**：令牌新增「只读 / 读写」权限——只读（默认）仅可调用查询接口与 MCP 读工具，读写令牌额外开放 DNS 解析记录的创建 / 修改 / 删除；REST API 对只读令牌的写请求返回 403，签发界面支持选择并在列表中展示权限徽标
 - **MCP 写工具**：新增 `create_dns_record` / `update_dns_record` / `delete_dns_record` 三个写操作工具（readwrite Token 专属）——按本地镜像 record_id 定位记录（先 `list_dns_records` 查询即可），复用 Zone 级数据授权，全部操作自动写入审计日志
 - **DomHub Skill 包**：仓库新增 `skills/domhub/SKILL.md`，一键安装到 WorkBuddy / Claude Code 等 AI 助手后，AI 自动掌握 DomHub 工具编排（先查后改、删除前确认、TTL 约定、NS 记录保护等安全红线）
+- **README 重点推介 AI 接入**：MCP 章节升级为门面位置，功能特性首条展示 AI 能力
 
 ## [v0.7.3] - 2026-09-20
 

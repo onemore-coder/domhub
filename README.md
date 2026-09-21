@@ -11,8 +11,60 @@
 
 把散落在腾讯云、阿里云、AWS、Cloudflare 等多个云厂商、多个账号下的域名资产和 DNS 解析，收拢到一个控制台里统一管理。单二进制部署，开箱即用。
 
+## 🤖 AI 接入（MCP）：让 AI 助手直接管理你的域名
+
+**DomHub 内置 MCP（Model Context Protocol）服务器**——Claude / Cursor / WorkBuddy 等支持 MCP 的 AI 助手无需任何中间层即可接入，这是 DomHub 区别于传统域名管理台的核心能力：
+
+- 💬 **问一句就知道**：「哪些域名快到期了？」「example.com 的证书还剩几天？」——AI 直查台账与监控，带着答案回复
+- 🛠️ **说一声就能改**：「把 www 的解析切到新服务器」——AI 帮你增删改解析记录，改前与你确认、改后可在审计日志追溯
+- 🔐 **权限收得住**：Token 分只读 / 读写两档，Zone 级数据授权，云账号密钥全程脱敏，AI 拿不到不该碰的东西
+
+**接入步骤**（约 1 分钟）：
+
+1. 在「安全设置 → API Token」页生成一个 Token（`dht_` 前缀；日常查询建议选**只读**，需要 AI 代管解析记录时选**读写**）
+2. 在 AI 客户端的 MCP 配置中加入 DomHub：
+
+```json
+{
+  "mcpServers": {
+    "domhub": {
+      "type": "http",
+      "url": "http://your-domhub-host:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer dht_xxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+> Claude Desktop / Cursor 填在 MCP 服务器配置里；不支持 `headers` 字段的客户端可用 `X-Api-Key` 头或网关注入。
+
+**内置工具**（11 个 = 8 只读 + 3 写操作）：
+
+| 工具 | 说明 |
+|---|---|
+| `overview` | 数据概览：厂商分布、30 天内到期域名/证书统计 |
+| `list_domains` | 域名台账（关键词 / 厂商 / 到期时间过滤，分页） |
+| `list_zones` | 已托管 DNS Zone 列表 |
+| `list_dns_records` | DNS 解析记录（按账号 / Zone / 类型 / 关键词过滤） |
+| `search_dns` | 跨 Zone 全局搜索 |
+| `list_certs` | SSL 证书监控状态（含剩余天数） |
+| `list_cloud_accounts` | 云账号元信息（密钥脱敏） |
+| `list_alert_logs` | 最近告警发送记录 |
+| `create_dns_record` 🔒 | 创建解析记录（需 readwrite Token） |
+| `update_dns_record` 🔒 | 修改解析记录值 / TTL / 优先级 / 代理状态（需 readwrite Token） |
+| `delete_dns_record` 🔒 | 删除解析记录（需 readwrite Token，删除前应与用户确认） |
+
+**权限模型**：Token 分**只读（readonly，默认）**与**读写（readwrite）**两档——只读 Token 调用写工具会被拒绝，REST API 的写请求同样拦截；写操作复用 Zone 级数据授权（非 admin 的 Token 只能操作被授权的 Zone），并全部落入审计日志。
+
+**安全说明**：MCP 复用 API Token 鉴权与数据授权体系；AI 的每次查询与工具调用均可在审计日志中追溯。
+
+**进阶：DomHub Skill 包**——把 `skills/domhub/SKILL.md` 安装到你的 AI 助手（WorkBuddy 放 `~/.workbuddy/skills/domhub/`，Claude Code 放 `~/.claude/skills/domhub/`），AI 会自动学会 DomHub 工具的编排方式（先查后改、删除前确认、TTL 约定等），接入体验更稳。
+
 ## 功能特性
 
+- **🤖 AI 接入（MCP）**：内置 MCP 服务器，Claude / Cursor / WorkBuddy 等 AI 助手一句话接入，查询域名 / DNS / 证书数据、代管解析记录变更（只读 / 读写 Token 分档 + 全程审计）
 - **多云账号接入**：腾讯云 / 阿里云 / AWS / Cloudflare，凭证 AES-256-GCM 加密存储，列表脱敏展示
 - **域名台账**：多账号域名统一视图、自动同步、Tags 管理、到期告警（多档提前天数）、托管归属一目了然
 - **DNS 解析管理**：跨账号聚合的 Zone 列表（本地缓存秒开）、解析记录增删改、**变更预览 → 确认执行**（diff/plan/push，DNSControl 风格）
@@ -22,7 +74,7 @@
 - **证书签发与部署**：ACME 免费证书（Let's Encrypt / ZeroSSL，DNS-01，泛域名），自动续期，签发后自动部署到阿里云/腾讯云 CDN 或 SSH 主机
 - **告警中心**：到期 / 漂移 / 证书告警，钉钉机器人 / 企业微信 / 邮件 / Webhook / Telegram 渠道，支持测试发送
 - **RBAC 权限**：admin / operator / viewer 三角色，可按「账号 + Zone」粒度授权
-- **API Token**：`dht_` 前缀令牌，方便接入 CI / 自动化脚本
+- **API Token**：`dht_` 前缀令牌（只读 / 读写分档），CI / 自动化脚本与 AI 助手 MCP 接入共用一套凭据
 - **审计日志**：所有 DNS 变更与部署操作留痕（操作人 / 动作 / 内容）
 - **两步验证（2FA）**：登录支持 TOTP 动态码（兼容 Google Authenticator 等验证器），管理员可重置
 - **现代界面**：浅色 / 深色模式一键切换、全局搜索、系统设置 cron 热生效
@@ -125,53 +177,6 @@ cd web && npm install && npm run dev
 curl -H "Authorization: Bearer dht_xxxxxxxxxxxx" \
   http://localhost:8080/api/v1/domains
 ```
-
-### AI 接入（MCP）
-
-DomHub 内置 MCP（Model Context Protocol）服务器，Claude / Cursor / WorkBuddy 等支持 MCP 的 AI 助手可以**直接查询**你的域名、DNS 解析、证书到期与告警数据——无需任何中间层。
-
-**接入步骤**（约 1 分钟）：
-
-1. 在「安全设置 → API Token」页生成一个 Token（`dht_` 前缀；日常查询建议选**只读**，需要 AI 代管解析记录时选**读写**）
-2. 在 AI 客户端的 MCP 配置中加入 DomHub：
-
-```json
-{
-  "mcpServers": {
-    "domhub": {
-      "type": "http",
-      "url": "http://your-domhub-host:8080/mcp",
-      "headers": {
-        "Authorization": "Bearer dht_xxxxxxxxxxxx"
-      }
-    }
-  }
-}
-```
-
-> Claude Desktop / Cursor 填在 MCP 服务器配置里；不支持 `headers` 字段的客户端可用 `X-Api-Key` 头或网关注入。
-
-**内置工具**（11 个 = 8 只读 + 3 写操作）：
-
-| 工具 | 说明 |
-|---|---|
-| `overview` | 数据概览：厂商分布、30 天内到期域名/证书统计 |
-| `list_domains` | 域名台账（关键词 / 厂商 / 到期时间过滤，分页） |
-| `list_zones` | 已托管 DNS Zone 列表 |
-| `list_dns_records` | DNS 解析记录（按账号 / Zone / 类型 / 关键词过滤） |
-| `search_dns` | 跨 Zone 全局搜索 |
-| `list_certs` | SSL 证书监控状态（含剩余天数） |
-| `list_cloud_accounts` | 云账号元信息（密钥脱敏） |
-| `list_alert_logs` | 最近告警发送记录 |
-| `create_dns_record` 🔒 | 创建解析记录（需 readwrite Token） |
-| `update_dns_record` 🔒 | 修改解析记录值 / TTL / 优先级 / 代理状态（需 readwrite Token） |
-| `delete_dns_record` 🔒 | 删除解析记录（需 readwrite Token，删除前应与用户确认） |
-
-**权限模型**：Token 分**只读（readonly，默认）**与**读写（readwrite）**两档——只读 Token 调用写工具会被拒绝，REST API 的写请求同样拦截；写操作复用 Zone 级数据授权（非 admin 的 Token 只能操作被授权的 Zone），并全部落入审计日志。
-
-**安全说明**：MCP 复用 API Token 鉴权与数据授权体系；AI 的每次查询与工具调用均可在审计日志中追溯。
-
-**进阶：DomHub Skill 包**——把 `skills/domhub/SKILL.md` 安装到你的 AI 助手（WorkBuddy 放 `~/.workbuddy/skills/domhub/`，Claude Code 放 `~/.claude/skills/domhub/`），AI 会自动学会 DomHub 工具的编排方式（先查后改、删除前确认、TTL 约定等），接入体验更稳。
 
 ## Roadmap
 
