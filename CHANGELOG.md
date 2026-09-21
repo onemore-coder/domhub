@@ -2,6 +2,12 @@
 
 本项目的所有重要变更都记录在本文件中。
 
+## [Unreleased]
+
+### 修复
+
+- **MCP 列表类工具返回格式错误**：`list_zones` / `list_dns_records` / `list_certs` / `list_cloud_accounts` / `list_alert_logs` 此前直接返回顶层数组，违反 MCP 协议「structuredContent 必须为 JSON 对象」的约定，部分客户端（如 WorkBuddy）校验报 `expected record, received array`；现统一包装为 `{items, total}` 对象，并在工具注册层增加数组自动兜底包装，杜绝新增工具再次踩坑
+
 ## [v0.8.0] - 2026-09-21
 
 ### 新增

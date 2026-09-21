@@ -197,12 +197,13 @@ func TestToolsRoundTrip(t *testing.T) {
 		t.Fatalf("list_domains 应命中 1 条: %+v", dm)
 	}
 
-	// list_zones
+	// list_zones：统一对象包装 {total, items}
 	zones, err := env.deps.listZones(context.Background(), op, struct{}{})
 	if err != nil {
 		t.Fatalf("list_zones 失败: %v", err)
 	}
-	if len(zones.([]repo.ZoneView)) != 1 {
+	zm := zones.(map[string]any)
+	if zm["total"].(int) != 1 || len(zm["items"].([]repo.ZoneView)) != 1 {
 		t.Fatalf("list_zones 应返回 1 条: %+v", zones)
 	}
 
@@ -211,7 +212,8 @@ func TestToolsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list_dns_records 失败: %v", err)
 	}
-	if len(recs.([]model.DnsRecord)) != 1 {
+	rm := recs.(map[string]any)
+	if rm["total"].(int) != 1 || len(rm["items"].([]model.DnsRecord)) != 1 {
 		t.Fatalf("list_dns_records 应返回 1 条: %+v", recs)
 	}
 
@@ -230,7 +232,8 @@ func TestToolsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list_certs 失败: %v", err)
 	}
-	if len(certs.([]model.CertStatus)) != 1 {
+	cm := certs.(map[string]any)
+	if cm["total"].(int) != 1 || len(cm["items"].([]model.CertStatus)) != 1 {
 		t.Fatalf("list_certs 应命中 1 条: %+v", certs)
 	}
 
@@ -239,8 +242,9 @@ func TestToolsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list_cloud_accounts 失败: %v", err)
 	}
-	av := accs.([]accountView)
-	if len(av) != 1 || av[0].Provider != "tencent" {
-		t.Fatalf("list_cloud_accounts 异常: %+v", av)
+	am := accs.(map[string]any)
+	av := am["items"].([]accountView)
+	if am["total"].(int) != 1 || len(av) != 1 || av[0].Provider != "tencent" {
+		t.Fatalf("list_cloud_accounts 异常: %+v", accs)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -80,6 +81,11 @@ func add[In any](s *mcp.Server, d Deps, name, desc string, run func(ctx context.
 			out, err := run(ctx, op, in)
 			if err != nil {
 				return nil, nil, err
+			}
+			// MCP 协议要求 structuredContent 必须是 JSON 对象（"expected record, received array"）；
+			// 工具误返回顶层数组时自动包一层 {items, total} 兜底，避免客户端校验失败
+			if rv := reflect.ValueOf(out); rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+				out = ginH{"total": rv.Len(), "items": out}
 			}
 			return nil, out, nil
 		})
@@ -201,7 +207,11 @@ func (d Deps) listDomains(_ context.Context, _ service.Actor, in listDomainsIn) 
 }
 
 func (d Deps) listZones(_ context.Context, op service.Actor, _ struct{}) (any, error) {
-	return d.Zones.ListCached(op)
+	zones, err := d.Zones.ListCached(op)
+	if err != nil {
+		return nil, err
+	}
+	return ginH{"total": len(zones), "items": zones}, nil
 }
 
 type listRecordsIn struct {
@@ -224,7 +234,11 @@ func (d Deps) listRecords(_ context.Context, op service.Actor, in listRecordsIn)
 	if err != nil {
 		return nil, err
 	}
-	return d.Zones.ListRecordsCached(op, accountID, in.Zone, in.Keyword, in.RecordType, limit)
+	records, err := d.Zones.ListRecordsCached(op, accountID, in.Zone, in.Keyword, in.RecordType, limit)
+	if err != nil {
+		return nil, err
+	}
+	return ginH{"total": len(records), "items": records}, nil
 }
 
 // resolveAccountID 仅指定 Zone 未指定账号时，从授权可见的 Zone 视图自动解析归属账号。
@@ -314,7 +328,7 @@ func (d Deps) listCerts(_ context.Context, _ service.Actor, in listCertsIn) (any
 		}
 		certs = filtered
 	}
-	return certs, nil
+	return ginH{"total": len(certs), "expiring_days": in.ExpiringDays, "items": certs}, nil
 }
 
 // accountView 云账号元信息（不含任何密钥字段）。
@@ -340,7 +354,7 @@ func (d Deps) listAccounts(_ context.Context, _ service.Actor, _ struct{}) (any,
 			Status: a.Status, LastCheckOK: a.LastCheckOK, LastCheckMsg: a.LastCheckMsg,
 		})
 	}
-	return views, nil
+	return ginH{"total": len(views), "items": views}, nil
 }
 
 type listAlertLogsIn struct {
@@ -355,7 +369,11 @@ func (d Deps) listAlertLogs(_ context.Context, _ service.Actor, in listAlertLogs
 	if limit > 100 {
 		limit = 100
 	}
-	return d.Alerts.ListLogs(limit)
+	logs, err := d.Alerts.ListLogs(limit)
+	if err != nil {
+		return nil, err
+	}
+	return ginH{"total": len(logs), "items": logs}, nil
 }
 
 // ginH 轻量 map（避免 mcp 包直接依赖 gin）。
