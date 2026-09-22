@@ -117,6 +117,10 @@ func (s *ZoneService) refreshAccount(a *model.CloudAccount) (int, error) {
 	if err := s.zones.UpsertBatch(a.ID, zones, batchStart); err != nil {
 		return 0, err
 	}
+	// 用解析记录镜像修正记录数（厂商 ListZones 的计数不可靠，Cloudflare 恒为 0）
+	if err := s.zones.ApplyMirrorCounts(a.ID); err != nil {
+		logger.L().Warn("回填 Zone 记录数失败", zap.String("account", a.Name), zap.Error(err))
+	}
 	return len(zones), nil
 }
 

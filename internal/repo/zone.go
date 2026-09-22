@@ -28,13 +28,16 @@ func NewZoneRepo(db *gorm.DB) *ZoneRepo { return &ZoneRepo{db: db} }
 
 // UpsertBatch 批量写入/更新某账号的 Zone 缓存，并删除本轮未出现的过期条目。
 // batchStart 用于识别陈旧数据：本轮同步前已存在、且本轮未刷新到的即已从厂商侧消失。
+// 注意：不回写已有条目的 record_count——部分厂商（如 Cloudflare）的 ListZones
+// 不返回记录数（恒为 0），覆盖会冲掉镜像同步回写的真实值；刷新后由
+// ApplyMirrorCounts 从本地解析记录镜像统一修正。
 func (r *ZoneRepo) UpsertBatch(accountID uint, zones []model.Zone, batchStart time.Time) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for i := range zones {
 			zones[i].CloudAccountID = accountID
 			zones[i].SyncedAt = time.Now()
 			if err := tx.Where(model.Zone{CloudAccountID: accountID, Name: zones[i].Name}).
-				Assign(map[string]any{"record_count": zones[i].RecordCount, "synced_at": zones[i].SyncedAt}).
+				Assign(map[string]any{"synced_at": zones[i].SyncedAt}).
 				FirstOrCreate(&zones[i]).Error; err != nil {
 				return err
 			}
@@ -46,6 +49,16 @@ func (r *ZoneRepo) UpsertBatch(accountID uint, zones []model.Zone, batchStart ti
 		}
 		return nil
 	})
+}
+
+// ApplyMirrorCounts 用本地解析记录镜像的统计回填该账号全部 Zone 的记录数。
+// 厂商 ListZones 的计数不可靠（Cloudflare 恒为 0），镜像才是我们掌握的真实数据。
+func (r *ZoneRepo) ApplyMirrorCounts(accountID uint) error {
+	return r.db.Exec(
+		"UPDATE zones SET record_count = "+
+			"(SELECT COUNT(*) FROM dns_records d "+
+			"WHERE d.cloud_account_id = zones.cloud_account_id AND d.zone_name = zones.name) "+
+			"WHERE cloud_account_id = ?", accountID).Error
 }
 
 // ListViews 全量缓存视图（含账号信息），按账号+域名排序。
