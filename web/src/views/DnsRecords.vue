@@ -53,7 +53,7 @@
           <el-button size="small" type="danger" plain @click="batchDelete">批量删除</el-button>
         </template>
       </div>
-      <el-table :data="filteredRecords" v-loading="recordsLoading" stripe @selection-change="(v) => (selection = v)">
+      <el-table :data="pagedRecords" v-loading="recordsLoading" stripe @selection-change="(v) => (selection = v)">
         <el-table-column type="selection" width="42" />
         <el-table-column label="主机记录" prop="name" width="150" sortable>
           <template #default="{ row }">
@@ -112,6 +112,15 @@
           <el-empty description="该域名下暂无解析记录" />
         </template>
       </el-table>
+
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="filteredRecords.length"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        class="pagination"
+      />
     </el-card>
 
     <!-- 添加/编辑记录 -->
@@ -406,6 +415,16 @@ const filteredRecords = computed(() => {
     .filter((r) => !typeFilter.value || r.type === typeFilter.value)
 })
 
+// 本地分页（镜像数据一次性拉取，筛选条件变化时回到第一页）
+const page = ref(1)
+const pageSize = ref(20)
+const pagedRecords = computed(() =>
+  filteredRecords.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+)
+watch([nameFilter, typeFilter], () => {
+  page.value = 1
+})
+
 const dialogVisible = ref(false)
 const editing = ref(false)
 const saving = ref(false)
@@ -519,6 +538,9 @@ async function loadRecords() {
     records.value = res.data?.items || []
     syncedAt.value = res.data?.synced_at || ''
     snapshot.value = records.value.map((r) => ({ ...r }))
+    // 数据重载后若当前页超出范围则回收（如删除后记录变少）
+    const maxPage = Math.max(1, Math.ceil(records.value.length / pageSize.value))
+    if (page.value > maxPage) page.value = maxPage
   } catch (e) {
     ElMessage.error(e.response?.data?.message || '读取解析记录失败')
   } finally {
@@ -1058,6 +1080,10 @@ async function removeTemplate(row) {
 .batch-hint {
   font-size: 12px;
   color: var(--el-color-primary);
+}
+.pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 .tpl-toolbar {
   display: flex;

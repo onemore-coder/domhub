@@ -20,7 +20,7 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table :data="filteredZones" v-loading="loading" stripe @row-click="goRecords">
+      <el-table :data="pagedZones" v-loading="loading" stripe @row-click="goRecords">
         <el-table-column label="托管域名" min-width="220">
           <template #default="{ row }">
             <el-link type="primary" :underline="false" @click.stop="goRecords(row)">{{ row.name }}</el-link>
@@ -54,12 +54,21 @@
           />
         </template>
       </el-table>
+
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="filteredZones.length"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        class="pagination"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
@@ -82,6 +91,16 @@ const filteredZones = computed(() => {
   return zonesAll.value
     .filter((z) => !accountFilter.value || z.cloud_account_id === accountFilter.value)
     .filter((z) => !kw || z.name.toLowerCase().includes(kw))
+})
+
+// 本地分页（数据来自镜像缓存，过滤条件变化时回到第一页）
+const page = ref(1)
+const pageSize = ref(20)
+const pagedZones = computed(() =>
+  filteredZones.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
+)
+watch([keyword, accountFilter], () => {
+  page.value = 1
 })
 
 const zoneAccountCount = computed(() => new Set(filteredZones.value.map((z) => z.cloud_account_id)).size)
@@ -176,6 +195,10 @@ function goRecords(row, withSnapshot) {
 .synced-at {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
 }
 :deep(.el-table__row) {
   cursor: pointer;
